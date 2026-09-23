@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+Logs/
+*.user
+*.suo
+
+# Runtime data can contain personal file paths, location and preferences.
+Data/settings.json
+Data/weather-cache.json
+Data/music-library.json
+Data/playlists.json
+Music/*
+!Music/.gitkeep

@@ -1,0 +1,16 @@
+[
+  {
+    "Name": "Bedroom",
+    "BaseBackground": "background.png",
+    "SkyColors": { "Morning": "#FFF3D1", "Day": "#87C5D9", "Evening": "#E99A83", "Night": "#25365D" },
+    "LightingColors": { "Morning": "#22F5CC92", "Day": "#00000000", "Evening": "#35E79076", "Night": "#7A151D39" },
+    "SkyAssets": { "Morning": "Sky/Morning.png", "Day": "Sky/Day.png", "Evening": "Sky/Evening.png", "Night": "Sky/Night.png" },
+    "LightingAssets": { "Morning": "Lighting/Morning.png", "Day": "Lighting/Day.png", "Evening": "Lighting/Evening.png", "Night": "Lighting/Night.png" },
+    "WindowBounds": { "X": 48, "Y": 8, "Width": 42, "Height": 48 },
+    "GirlPosition": { "X": 95, "Y": 6 },
+    "CatPosition": { "X": 217, "Y": 49 },
+    "ClockPosition": { "X": 8, "Y": 5 },
+    "MusicCategory": "Focus",
+    "AmbientEffect": "None"
+  }
+]

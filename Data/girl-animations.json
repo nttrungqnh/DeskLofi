@@ -1,0 +1,16 @@
+{
+  "CanvasWidth": 517,
+  "CanvasHeight": 488,
+  "Animations": [
+    { "Name": "Idle", "Fps": 4, "Loop": true },
+    { "Name": "Typing", "FolderPath": "Assets/Characters/Girl/Typing", "FrameCount": 4, "Fps": 6, "Loop": true },
+    { "Name": "TypingFast", "FolderPath": "Assets/Characters/Girl/Typing", "FrameCount": 4, "Fps": 10, "Loop": true },
+    { "Name": "Mouse", "Fps": 4, "Loop": true },
+    { "Name": "Coffee", "Fps": 4, "Loop": true },
+    { "Name": "Stretch", "Fps": 4, "Loop": true },
+    { "Name": "LookWindow", "Fps": 4, "Loop": true },
+    { "Name": "Away", "Fps": 4, "Loop": true },
+    { "Name": "SitDown", "Fps": 4, "Loop": false, "NextAnimation": "Idle" },
+    { "Name": "LookAtCat", "Fps": 4, "Loop": true }
+  ]
+}

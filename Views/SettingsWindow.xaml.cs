@@ -1,0 +1,20 @@
+using System.Windows;
+using DeskLofi.Services;
+using DeskLofi.Models;
+using Forms = System.Windows.Forms;
+
+namespace DeskLofi.Views;
+public partial class SettingsWindow : Window
+{
+    private readonly SettingsService _service;
+    private readonly MusicService? _music;
+    public SettingsWindow(SettingsService service,MusicService? music=null){InitializeComponent();_service=service;_music=music;var s=service.Current;Startup.IsChecked=s.StartWithWindows;TopmostEnabled.IsChecked=s.AlwaysOnTop;Keyboard.IsChecked=s.ReactToKeyboard;Mouse.IsChecked=s.ReactToMouse;Autoplay.IsChecked=s.AutoPlayMusic;Sleep.Value=s.CatSleepTimeoutSeconds;Afk.Value=s.AfkTimeoutMinutes;Scale.Value=s.Scale;ShowClock.IsChecked=s.ShowClock;ShowDate.IsChecked=s.ShowDate;AutoDayNight.IsChecked=s.AutoDayNight;EnableWeather.IsChecked=s.EnableRealWeather;City.Text=s.CityName;Latitude.Text=s.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);Longitude.Text=s.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);Refresh.Value=Math.Clamp(s.WeatherRefreshMinutes,5,120);WeatherEffects.IsChecked=s.WeatherEffects;WeatherAmbience.IsChecked=s.WeatherAmbienceAuto;Lightning.IsChecked=s.EnableLightning;WeatherVolume.Value=s.WeatherVolume;MusicVolume.Value=s.Volume;DebugMode.IsChecked=s.DebugMode;Select(DebugTimeChoice,s.DebugTime);Select(DebugWeatherChoice,s.DebugWeather);if(DebugTimeChoice.SelectedItem is null)DebugTimeChoice.SelectedIndex=3;if(DebugWeatherChoice.SelectedItem is null)DebugWeatherChoice.SelectedIndex=2;}
+    private static void Select(System.Windows.Controls.ComboBox combo,string value){foreach(var item in combo.Items.OfType<System.Windows.Controls.ComboBoxItem>())if(string.Equals(item.Content?.ToString(),value,StringComparison.OrdinalIgnoreCase)){combo.SelectedItem=item;return;}}
+    private void SaveClick(object sender,RoutedEventArgs e){SaveSettings();StartupService.SetEnabled(_service.Current.StartWithWindows);Close();}
+    public void SaveSettings(){var s=_service.Current;s.StartWithWindows=Startup.IsChecked==true;s.AlwaysOnTop=TopmostEnabled.IsChecked==true;s.ReactToKeyboard=Keyboard.IsChecked==true;s.ReactToMouse=Mouse.IsChecked==true;s.AutoPlayMusic=Autoplay.IsChecked==true;s.CatSleepTimeoutSeconds=(int)Sleep.Value;s.AfkTimeoutMinutes=(int)Afk.Value;s.Scale=Scale.Value;s.ShowClock=ShowClock.IsChecked==true;s.ShowDate=ShowDate.IsChecked==true;s.AutoDayNight=AutoDayNight.IsChecked==true;s.EnableRealWeather=EnableWeather.IsChecked==true;s.CityName=City.Text.Trim();s.Latitude=ParseCoordinate(Latitude.Text);s.Longitude=ParseCoordinate(Longitude.Text);s.WeatherRefreshMinutes=(int)Refresh.Value;s.WeatherEffects=WeatherEffects.IsChecked==true;s.WeatherAmbienceAuto=WeatherAmbience.IsChecked==true;s.EnableLightning=Lightning.IsChecked==true;s.WeatherVolume=WeatherVolume.Value;s.Volume=MusicVolume.Value;s.DebugMode=DebugMode.IsChecked==true;s.DebugTime=(DebugTimeChoice.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString()??"";s.DebugWeather=(DebugWeatherChoice.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString()??"";s.Scene=(SceneChoice.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString()??"Bedroom";_service.Save();}
+    private static double ParseCoordinate(string value)=>double.TryParse(value,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out var parsed)?parsed:0;
+    private void CancelClick(object sender,RoutedEventArgs e)=>Close();
+    private void AddFilesClick(object sender,RoutedEventArgs e){if(_music is null)return;var dialog=new Microsoft.Win32.OpenFileDialog{Multiselect=true,Filter="Audio files (*.mp3;*.wav)|*.mp3;*.wav"};if(dialog.ShowDialog(this)==true)_music.AddFiles(dialog.FileNames);}
+    private void AddFolderClick(object sender,RoutedEventArgs e){if(_music is null)return;using var dialog=new Forms.FolderBrowserDialog();if(dialog.ShowDialog()==Forms.DialogResult.OK)_music.AddFolder(dialog.SelectedPath);}
+    private void OpenLibraryClick(object sender,RoutedEventArgs e){if(_music is not null)new MusicLibraryWindow(_music){Owner=this}.Show();}
+}

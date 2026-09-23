@@ -1,0 +1,9 @@
+<Window x:Class="DeskLofi.Views.MusicLibraryWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="DeskLofi Music Library" Width="420" Height="500" WindowStartupLocation="CenterOwner" Background="#FF252332" Foreground="White">
+ <DockPanel Margin="12">
+  <StackPanel DockPanel.Dock="Top"><TextBlock Text="Music Library" FontSize="18" FontWeight="SemiBold"/><TextBlock x:Name="CountLabel" Foreground="#FFBFC5D3" Margin="0,3,0,8"/></StackPanel>
+  <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0"><Button Content="Add Files" Click="AddFilesClick" Margin="3" Padding="7,4"/><Button Content="Add Folder" Click="AddFolderClick" Margin="3" Padding="7,4"/><Button Content="Favorite" Click="FavoriteClick" Margin="3" Padding="7,4"/><Button Content="Remove Missing" Click="RemoveMissingClick" Margin="3" Padding="7,4"/></StackPanel>
+  <ListBox x:Name="TrackList" MouseDoubleClick="TrackDoubleClick" Background="#FF1C1B28" BorderBrush="#FF514B60">
+   <ListBox.ItemTemplate><DataTemplate><Grid Margin="3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold"/><TextBlock Text="{Binding Artist}" Foreground="#FFBFC5D3" FontSize="10"/><TextBlock Text="{Binding Album}" Foreground="#FF8C91A1" FontSize="9"/></StackPanel><TextBlock Grid.Column="1" Text="MISSING" Foreground="#FFFF7D7D" VerticalAlignment="Center" Margin="6,0,0,0"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsMissing}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Grid></DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+ </DockPanel>
+</Window>
