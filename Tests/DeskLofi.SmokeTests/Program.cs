@@ -19,7 +19,7 @@ internal static class Program
         {
             ("local time boundaries", TestTime), ("WMO weather mapping", TestWeatherMapping),
             ("network error preserves weather cache", TestWeatherFailure), ("visual effects and empty sprite fallback", TestEffects),
-            ("typing animation cache and FPS", TestTypingAnimation), ("typing state and debounce", TestTypingStates),
+            ("typing animation cache and FPS", TestTypingAnimation), ("idle blink and transition", TestIdleBlink), ("mouse frames and ping-pong cache", TestMouseAnimation), ("mouse and keyboard transitions", TestMouseTransitions), ("typing state and debounce", TestTypingStates),
             ("phase one activity state regression", TestActivityStates), ("settings save/load", TestSettings), ("empty music library and missing file", TestMusicLibrary),
             ("input hook dispose", TestHooks), ("ambience missing assets", TestAmbience), ("tray and application lifecycle", TestHostLifecycle)
         };
@@ -63,8 +63,8 @@ internal static class Program
         var idle=now.AddSeconds(-50);tracker.Keyboard(idle);tracker.Mouse(idle);manager.Tick();Assert(manager.Cat==CatState.Sleep&&manager.Girl==GirlState.Idle,"idle cat sleep and girl idle");
         tracker.Keyboard(DateTime.UtcNow);manager.Tick();Assert(manager.Cat==CatState.WakeUp,"cat wakes on activity");manager.Tick();Assert(manager.Cat==CatState.TailWag,"cat returns to awake state");
         var slowTracker=new ActivityTracker();var slowManager=new CompanionStateManager(slowTracker,new AppSettings());slowTracker.Keyboard(DateTime.UtcNow);slowManager.Tick();Assert(slowManager.Girl==GirlState.Typing,"slow typing reaction");
-        var mouseTracker=new ActivityTracker();var mouseManager=new CompanionStateManager(mouseTracker,new AppSettings{ReactToKeyboard=false});mouseTracker.Mouse(DateTime.UtcNow);mouseManager.Tick();Assert(mouseManager.Girl==GirlState.Mouse,"mouse reaction");
-        var afkTracker=new ActivityTracker();var afkManager=new CompanionStateManager(afkTracker,new AppSettings{AfkTimeoutMinutes=1});var old=DateTime.UtcNow.AddMinutes(-2);afkTracker.Keyboard(old);afkTracker.Mouse(old);afkManager.Tick();Assert(afkManager.Girl is GirlState.Away or GirlState.Coffee or GirlState.Stretch or GirlState.LookWindow,"AFK animation");afkTracker.Keyboard(DateTime.UtcNow);afkManager.Tick();Assert(afkManager.Girl==GirlState.Typing,"typing interrupts AFK animation");return Task.CompletedTask;
+        var mouseTracker=new ActivityTracker();var mouseManager=new CompanionStateManager(mouseTracker,new AppSettings{ReactToKeyboard=false});mouseTracker.Mouse(DateTime.UtcNow);mouseManager.Tick();Assert(mouseManager.Girl==GirlState.Mouse,"mouse activity switches to Mouse");
+        var afkTracker=new ActivityTracker();var afkManager=new CompanionStateManager(afkTracker,new AppSettings{AfkTimeoutMinutes=1});var old=DateTime.UtcNow.AddMinutes(-2);afkTracker.Keyboard(old);afkTracker.Mouse(old);afkManager.Tick();Assert(afkManager.Girl==GirlState.Idle,"long inactivity remains in the Idle animation");afkTracker.Keyboard(DateTime.UtcNow);afkManager.Tick();Assert(afkManager.Girl==GirlState.Typing,"typing interrupts Idle immediately");return Task.CompletedTask;
     }
     private static Task TestTypingAnimation()
     {
@@ -75,7 +75,7 @@ internal static class Program
         var slow=player.FramesFor("Typing");var fast=player.FramesFor("TypingFast");
         Assert(slow.Length==4,"four typing frames loaded");
         Assert(ReferenceEquals(slow,fast),"fast animation reuses identical cached collection");
-        Assert(slow.All(x=>x.PixelWidth==517&&x.PixelHeight==488),"all frames have one canvas without resizing");
+        Assert(slow.All(x=>x.PixelWidth==517&&x.PixelHeight==491),"all frames share bottom anchored canvas without resizing");
         player.Play("Typing");Assert(player.CurrentFps==6,"typing defaults to 6 FPS");
         player.Advance(TimeSpan.FromMilliseconds(170));Assert(player.FrameIndex==1,"typing advances after one frame interval");
         player.Play("Typing");Assert(player.FrameIndex==1,"same state does not restart frame");
@@ -88,6 +88,152 @@ internal static class Program
         missing.Play("Typing");Assert(missing.UsingFallback&&missing.CurrentFrame.PixelWidth==64,"missing asset falls back without crashing");
         return Task.CompletedTask;
     }
+    private static Task TestIdleBlink()
+    {
+        var catalog=SpriteAnimationController.LoadCatalog(Path.Combine(AppContext.BaseDirectory,"Data","girl-animations.json"));
+        var fallback=new SpriteLoader();var player=new SpriteAnimationController(catalog,name=>[fallback.GetFrame("Girl",name,0)]);
+        var idle=player.FramesFor("Idle");Assert(idle.Length==4,"all four Idle frames load");Assert(idle.All(x=>x.PixelWidth==517&&x.PixelHeight==491),"Idle and Typing share the fixed canvas");
+        player.Play("Idle");Assert(player.FrameIndex==0,"Idle starts with eyes open");Assert(player.CurrentMode==AnimationMode.IdleWithRandomBlink,"Idle uses event animation mode");
+        Assert(player.NextBlinkInSeconds is >=3 and <=7,"initial blink delay is randomly scheduled within 3–7 seconds");
+        player.Advance(TimeSpan.FromSeconds(1));Assert(player.FrameIndex==0,"Idle does not loop on an FPS interval");
+        player.BlinkNow();Assert(player.FrameIndex==1,"Blink Now starts the blink immediately");
+        foreach(var frame in new[]{2,3,0})
+        {
+            for(var i=0;i<30&&player.FrameIndex!=frame;i++)player.Advance(TimeSpan.FromMilliseconds(10));
+            Assert(player.FrameIndex==frame,$"blink reaches frame {frame}");
+        }
+        Assert(player.NextBlinkInSeconds is >=2.95 and <=7 or >=0.1 and <=0.2,"next blink is rescheduled, including the rare double-blink pause");
+        player.BlinkNow();player.Play("Typing");Assert(player.CurrentAnimation=="Typing"&&player.FrameIndex==0,"typing cancels a blink and switches immediately");
+        player.Advance(TimeSpan.FromMilliseconds(170));Assert(player.FrameIndex==1,"typing continues on its configured loop FPS");
+        player.Play("Idle");Assert(player.FrameIndex==0,"typing returns to open-eye Idle frame zero");
+        player.BlinkNow();player.SetSceneActive(false);var paused=player.FrameIndex;player.Advance(TimeSpan.FromSeconds(2));Assert(player.FrameIndex==paused,"hidden scene pauses blink events");
+        player.SetSceneActive(true);Assert(player.FrameIndex==0&&player.NextBlinkInSeconds is >=3 and <=7,"visible Idle resets open and reschedules");
+        return Task.CompletedTask;
+    }
+    private static Task TestMouseAnimation()
+    {
+        var catalog = SpriteAnimationController.LoadCatalog(Path.Combine(AppContext.BaseDirectory, "Data", "girl-animations.json"));
+        var definition = catalog.Animations.Single(x => x.Name == "Mouse");
+        Assert(definition.Frames.Length == 5, "five separate Mouse PNG paths configured");
+        for (var i = 0; i < 5; i++)
+            Assert(definition.Frames[i].EndsWith($"mouse_{i+1:00}.png", StringComparison.OrdinalIgnoreCase), "Mouse PNG order is 01 through 05");
+        Assert(definition.FrameWidth == 0 && definition.FrameHeight == 0 && definition.FrameGap == 0, "Mouse does not use sprite-sheet slicing");
+        Assert(Math.Abs(definition.SourceScale - 1.05) < 0.001, "all Mouse frames use one scale close to Idle height");
+        var fallback = new SpriteLoader();
+        var player = new SpriteAnimationController(catalog, name => [fallback.GetFrame("Girl", name, 0)]);
+        var frames = player.FramesFor("Mouse");
+        Assert(frames.Length == 5 && frames.All(x => x.PixelWidth == 517 && x.PixelHeight == 491 && x.IsFrozen), "five decoded frames share one frozen canvas");
+        static (int Top, int Bottom) AlphaBounds(System.Windows.Media.Imaging.BitmapSource frame)
+        {
+            var pixels = new byte[frame.PixelWidth * frame.PixelHeight * 4];
+            frame.CopyPixels(pixels, frame.PixelWidth * 4, 0);
+            var top = frame.PixelHeight;
+            var bottom = -1;
+            for (var y = 0; y < frame.PixelHeight; y++)
+                for (var x = 0; x < frame.PixelWidth; x++)
+                    if (pixels[(y * frame.PixelWidth + x) * 4 + 3] > 0)
+                    {
+                        top = Math.Min(top, y);
+                        bottom = Math.Max(bottom, y);
+                    }
+            return (top, bottom);
+        }
+        var idleBounds = AlphaBounds(player.FramesFor("Idle")[0]);
+        foreach (var frame in frames)
+        {
+            var bounds = AlphaBounds(frame);
+            Assert(Math.Abs((bounds.Bottom - bounds.Top) - (idleBounds.Bottom - idleBounds.Top)) <= 35,
+                $"Mouse visible height stays close to Idle after common scaling (Mouse {bounds.Top}–{bounds.Bottom}, Idle {idleBounds.Top}–{idleBounds.Bottom})");
+            Assert(Math.Abs(bounds.Bottom - idleBounds.Bottom) <= 15, $"Mouse and Idle share the same baseline (Mouse {bounds.Bottom}, Idle {idleBounds.Bottom})");
+        }
+        foreach (var frame in frames)
+        {
+            var pixels = new byte[frame.PixelWidth * frame.PixelHeight * 4];
+            frame.CopyPixels(pixels, frame.PixelWidth * 4, 0);
+            var hasVisiblePixel = false;
+            for (var i = 3; i < pixels.Length; i += 4) if (pixels[i] > 0) { hasVisiblePixel = true; break; }
+            Assert(pixels[3] == 0 && hasVisiblePixel, "Mouse frame is transparent and nonblank");
+        }
+        Assert(ReferenceEquals(frames, player.FramesFor("Mouse")), "Mouse frames are cached for reuse");
+        player.Play("Mouse");
+        Assert(!player.UsingFallback, "Mouse assets load without placeholder fallback");
+        Assert(player.CurrentFps == 4 && player.CurrentMode == AnimationMode.PingPong, "Mouse defaults to four FPS and PingPong");
+        foreach (var expected in new[] { 1, 2, 3, 4, 3, 2, 1, 0 })
+        {
+            player.Advance(TimeSpan.FromMilliseconds(260));
+            Assert(player.FrameIndex == expected, $"Mouse PingPong frame {expected}");
+        }
+        player.Advance(TimeSpan.FromMilliseconds(260));
+        var frameBefore = player.FrameIndex;
+        player.Play("Mouse");
+        Assert(player.FrameIndex == frameBefore && ReferenceEquals(player.CurrentFrame, frames[frameBefore]), "continued Mouse activity does not restart or reload");
+        foreach (var fps in new[] { 4, 5, 6, 7, 8 })
+        {
+            player.SetFpsOverride(fps);
+            Assert(player.CurrentFps == fps, $"Mouse can preview {fps} FPS");
+        }
+        player.Play("Idle");
+        player.BlinkNow();
+        player.Play("Mouse");
+        Assert(player.FrameIndex == 0 && player.CurrentAnimation == "Mouse", "Mouse cancels an Idle blink immediately");
+        player.Play("Idle");
+        Assert(player.FrameIndex == 0, "returning to Idle starts with open eyes");
+        return Task.CompletedTask;
+    }
+
+    private static Task TestMouseTransitions()
+    {
+        var settings = new AppSettings { CatSleepTimeoutSeconds = 3600, TypingIdleDelayMs = 1200, MouseIdleDelayMs = 900, KeyboardPriorityWindowMs = 650 };
+        var activity = new ActivityTracker();
+        var states = new CompanionStateManager(activity, settings);
+        var at = DateTime.UtcNow;
+        states.Tick(at);
+        Assert(states.Girl == GirlState.Idle, "starts Idle");
+        activity.Mouse(at.AddMilliseconds(100));
+        states.Tick(at.AddMilliseconds(100));
+        Assert(states.Girl == GirlState.Mouse, "Idle to Mouse immediately after activity");
+        activity.Mouse(at.AddMilliseconds(700));
+        states.Tick(at.AddMilliseconds(700));
+        Assert(states.Girl == GirlState.Mouse, "continued mouse activity stays Mouse");
+        states.Tick(at.AddMilliseconds(1601));
+        Assert(states.Girl == GirlState.Idle, "Mouse returns to Idle after 900 ms");
+        activity.Keyboard(at.AddMilliseconds(1700));
+        states.Tick(at.AddMilliseconds(1700));
+        Assert(states.Girl == GirlState.Typing, "keyboard interrupts Idle immediately");
+        activity.Mouse(at.AddMilliseconds(1800));
+        states.Tick(at.AddMilliseconds(1800));
+        Assert(states.Girl == GirlState.Typing, "mouse cannot steal state within keyboard priority window");
+        activity.Mouse(at.AddMilliseconds(2400));
+        states.Tick(at.AddMilliseconds(2400));
+        Assert(states.Girl == GirlState.Mouse, "Typing moves directly to Mouse after keyboard priority expires");
+        activity.Keyboard(at.AddMilliseconds(2410));
+        states.Tick(at.AddMilliseconds(2410));
+        Assert(states.Girl == GirlState.Typing, "Mouse to Typing interrupts immediately");
+        for (var i = 1; i <= 14; i++) activity.Keyboard(at.AddMilliseconds(2410 + i * 60));
+        states.Tick(at.AddMilliseconds(3250));
+        Assert(states.Girl == GirlState.TypingFast, "fast typing outranks Mouse");
+        activity.Mouse(at.AddMilliseconds(3300));
+        states.Tick(at.AddMilliseconds(3300));
+        Assert(states.Girl == GirlState.TypingFast, "mouse cannot interrupt recent TypingFast");
+        activity.Mouse(at.AddMilliseconds(4000));
+        states.Tick(at.AddMilliseconds(4000));
+        Assert(states.Girl == GirlState.Mouse, "TypingFast moves directly to Mouse after typing stops");
+        states.Tick(at.AddMilliseconds(4901));
+        Assert(states.Girl == GirlState.Idle, "Mouse eventually returns to Idle");
+        var withoutMouse = new CompanionStateManager(activity, new AppSettings { ReactToMouse = false });
+        withoutMouse.Tick(at.AddMilliseconds(4000));
+        Assert(withoutMouse.Girl != GirlState.Mouse, "mouse setting disables Mouse state");
+        var fastActivity = new ActivityTracker();
+        var fastStates = new CompanionStateManager(fastActivity, settings);
+        fastActivity.Mouse(at);
+        fastStates.Tick(at);
+        Assert(fastStates.Girl == GirlState.Mouse, "fast typing scenario starts in Mouse");
+        for (var i = 0; i < 14; i++) fastActivity.Keyboard(at.AddMilliseconds(100 + i * 35));
+        fastStates.Tick(at.AddMilliseconds(555));
+        Assert(fastStates.Girl == GirlState.TypingFast, "keyboard interrupts Mouse into TypingFast");
+        return Task.CompletedTask;
+    }
+
     private static Task TestTypingStates()
     {
         var settings=new AppSettings{TypingIdleDelayMs=1200,FastTypingWindowMs=2000,FastTypingThresholdPerSecond=7,ReactToMouse=false};
@@ -99,10 +245,11 @@ internal static class Program
         tracker.Keyboard(start.AddMilliseconds(3100));states.Tick(start.AddMilliseconds(3100));Assert(states.Girl==GirlState.Typing,"lower rate falls back to typing");
         states.Tick(start.AddMilliseconds(4299));Assert(states.Girl==GirlState.Typing,"debounce keeps typing at 1199 ms");
         states.Tick(start.AddMilliseconds(4301));Assert(states.Girl==GirlState.Idle,"idle after 1200 ms");
+        states.Tick(start.AddHours(2));Assert(states.Girl==GirlState.Idle,"long inactivity does not leave Idle for AFK/random actions");
         tracker.Keyboard(start.AddMilliseconds(4400));states.Tick(start.AddMilliseconds(4400));Assert(states.Girl==GirlState.Typing,"resume reacts immediately");
         var interruptedTracker=new ActivityTracker();var interrupted=new CompanionStateManager(interruptedTracker,settings);
-        interrupted.ReactToGirl();interrupted.Tick();Assert(interrupted.Girl==GirlState.LookAtCat,"idle reaction starts");
-        interruptedTracker.Keyboard(DateTime.UtcNow);interrupted.Tick();Assert(interrupted.Girl==GirlState.Typing,"keyboard interrupts a lower-priority animation");
+        interruptedTracker.Mouse(DateTime.UtcNow);interrupted.Tick();Assert(interrupted.Girl==GirlState.Idle,"mouse activity does not replace Idle");
+        interruptedTracker.Keyboard(DateTime.UtcNow);interrupted.Tick();Assert(interrupted.Girl==GirlState.Typing,"keyboard switches immediately to Typing");
         return Task.CompletedTask;
     }
     private static Task TestSettings()
@@ -128,6 +275,16 @@ internal static class Program
         {
             var tray=(System.Windows.Forms.NotifyIcon)typeof(DeskLofi.Views.MainWindow).GetField("_tray",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;var timer=(System.Windows.Threading.DispatcherTimer)typeof(DeskLofi.Views.MainWindow).GetField("_timer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var input=(InputMonitor)typeof(DeskLofi.Views.MainWindow).GetField("_input",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var player=(SpriteAnimationController)typeof(DeskLofi.Views.MainWindow).GetField("_girlAnimation",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var demoBack=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("RoomDemoBack",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var demoFront=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("RoomDemoFront",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var girlContainer=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("GirlContainer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var scene=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("Scene",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            Assert(player.CurrentAnimation=="Idle"&&player.FrameIndex==0,"app starts with the girl in open-eye Idle");Assert(demoBack.Visibility==System.Windows.Visibility.Collapsed&&demoFront.Visibility==System.Windows.Visibility.Collapsed,"demo room is hidden on startup");
+            Assert(ReferenceEquals(girlContainer.Parent,scene)&&host.Width==112&&host.Height==106,"character is the visible content in a compact window");
+            typeof(DeskLofi.Views.MainWindow).GetMethod("PositionOnTaskbar",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(host,null);
+            var workArea=System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea;
+            if(workArea!=null){var dpiScale=System.Windows.PresentationSource.FromVisual(host)?.CompositionTarget?.TransformFromDevice.M11??1;Assert(Math.Abs(host.Top-(workArea.Value.Bottom*dpiScale-host.Height))<.1,"startup places the girl on the taskbar edge");}
             Assert(tray.Visible,"tray icon visible on startup");Assert(timer.IsEnabled,"single animation timer active");Assert(input.IsKeyboardHookInstalled&&input.IsMouseHookInstalled,"host owns one keyboard and mouse hook");host.Dispose();Assert(!tray.Visible,"tray icon disposed");Assert(!timer.IsEnabled,"animation timer stopped");Assert(!input.IsKeyboardHookInstalled,"keyboard hook disposed");
         }
         finally{host.Dispose();}return Task.CompletedTask;

@@ -18,6 +18,7 @@ public sealed class MusicService : IDisposable
     private readonly Random _random = new();
     public IReadOnlyList<Track> Tracks => _library.Tracks;
     public IReadOnlyList<string> Playlists => _library.Playlists;
+    public string Language => _settings.Language;
     public string SelectedPlaylist { get; private set; }
     public bool IsPlaying { get; private set; }
     public double Volume { get => _player.Volume; set { _player.Volume = Math.Clamp(value, 0, 1); _settings.Volume = _player.Volume; } }

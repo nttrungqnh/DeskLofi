@@ -20,12 +20,21 @@ public sealed class SpriteAnimationController
     private double _elapsed;
     private double? _fpsOverride;
     private int _frameIndex;
+    private int _pingPongDirection = 1;
+    private bool _sceneActive = true;
+    private int _blinkStep;
+    private double _eventRemaining;
+
+    private static readonly Random Random = new();
 
     public string CurrentAnimation { get; private set; } = "";
     public int FrameIndex => _frameIndex;
+    public int FrameCount => _frames.Length;
     public bool IsPlaying { get; private set; }
     public bool UsingFallback => _fallbackNames.Contains(CurrentAnimation);
     public double CurrentFps => _fpsOverride ?? (_definitions.TryGetValue(CurrentAnimation, out var definition) ? definition.Fps : 4);
+    public AnimationMode CurrentMode => _definitions.TryGetValue(CurrentAnimation, out var definition) ? definition.Mode : AnimationMode.Loop;
+    public double? NextBlinkInSeconds => CurrentMode == AnimationMode.IdleWithRandomBlink && _blinkStep is 0 or 4 ? Math.Max(0, _eventRemaining) : null;
     public BitmapSource CurrentFrame => _frames.Length == 0 ? _fallback("Idle")[0] : _frames[_frameIndex];
 
     public SpriteAnimationController(SpriteAnimationCatalog catalog, Func<string, BitmapSource[]> fallback, string characterName = "Girl")
@@ -43,7 +52,7 @@ public sealed class SpriteAnimationController
         try
         {
             return JsonSerializer.Deserialize<SpriteAnimationCatalog>(File.ReadAllText(file),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } }) ?? new();
         }
         catch (Exception error)
         {
@@ -61,24 +70,58 @@ public sealed class SpriteAnimationController
         var shared = ReferenceEquals(_frames, next);
         CurrentAnimation = name;
         _frames = next;
-        if (!shared) { _frameIndex = 0; _elapsed = 0; }
+        if (!shared) { _frameIndex = 0; _elapsed = 0; _pingPongDirection = 1; }
+        ResetBlinkSchedule();
         IsPlaying = true;
     }
 
     public void Pause() => IsPlaying = false;
-    public void Stop() { IsPlaying = false; _frameIndex = 0; _elapsed = 0; }
+    public void Stop() { IsPlaying = false; _frameIndex = 0; _elapsed = 0; _pingPongDirection = 1; }
     public void SetFpsOverride(double? fps) => _fpsOverride = fps is > 0 ? fps : null;
+
+    public void SetSceneActive(bool active)
+    {
+        if (_sceneActive == active) return;
+        _sceneActive = active;
+        if (active && CurrentMode == AnimationMode.IdleWithRandomBlink)
+        {
+            _frameIndex = 0;
+            ResetBlinkSchedule();
+        }
+    }
+
+    public void BlinkNow()
+    {
+        if (CurrentMode != AnimationMode.IdleWithRandomBlink || _frames.Length < 4 || !_sceneActive) return;
+        _frameIndex = 1;
+        _blinkStep = 1;
+        var definition = CurrentDefinition!;
+        _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
+    }
 
     public bool Advance(TimeSpan elapsed)
     {
-        if (!IsPlaying || _frames.Length < 2 || CurrentFps <= 0) return false;
+        if (!IsPlaying || !_sceneActive || _frames.Length < 2) return false;
+        var definition = CurrentDefinition;
+        if (definition?.Mode == AnimationMode.IdleWithRandomBlink) return _frames.Length < 4 ? false : AdvanceBlink(elapsed, definition);
+        if (CurrentFps <= 0) return false;
         _elapsed += Math.Max(0, elapsed.TotalSeconds);
         var frameDuration = 1 / CurrentFps;
         if (_elapsed < frameDuration) return false;
         var steps = (int)(_elapsed / frameDuration);
         _elapsed -= steps * frameDuration;
-        var definition = _definitions.GetValueOrDefault(CurrentAnimation);
-        if (definition?.Loop == false && _frameIndex + steps >= _frames.Length)
+        if (definition?.Mode == AnimationMode.PingPong)
+        {
+            for (var i = 0; i < steps; i++)
+            {
+                var next = _frameIndex + _pingPongDirection;
+                if (next >= _frames.Length) { _pingPongDirection = -1; next = _frames.Length - 2; }
+                else if (next < 0) { _pingPongDirection = 1; next = 1; }
+                _frameIndex = next;
+            }
+            return true;
+        }
+        if ((definition?.Mode == AnimationMode.OneShot || definition?.Loop == false) && _frameIndex + steps >= _frames.Length)
         {
             _frameIndex = _frames.Length - 1;
             IsPlaying = false;
@@ -89,35 +132,99 @@ public sealed class SpriteAnimationController
         return true;
     }
 
+    private SpriteAnimationDefinition? CurrentDefinition => _definitions.GetValueOrDefault(CurrentAnimation);
+
+    private bool AdvanceBlink(TimeSpan elapsed, SpriteAnimationDefinition definition)
+    {
+        var remaining = Math.Max(0, elapsed.TotalSeconds);
+        var changed = false;
+        while (remaining >= _eventRemaining)
+        {
+            remaining -= _eventRemaining;
+            if (_blinkStep == 0)
+            {
+                _frameIndex = 1;
+                _blinkStep = 1;
+                _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
+            }
+            else if (_blinkStep < 3)
+            {
+                _frameIndex = ++_blinkStep;
+                _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
+            }
+            else if (_blinkStep == 3)
+            {
+                _frameIndex = 0;
+                _blinkStep = Random.NextDouble() < Math.Clamp(definition.DoubleBlinkChance, 0, 1) ? 4 : 0;
+                _eventRemaining = _blinkStep == 4
+                    ? NextDuration(definition.DoubleBlinkDelayMinMs, definition.DoubleBlinkDelayMaxMs) / 1000d
+                    : NextDuration(definition.BlinkDelayMinMs, definition.BlinkDelayMaxMs) / 1000d;
+            }
+            else
+            {
+                _frameIndex = 1;
+                _blinkStep = 1;
+                _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
+            }
+            changed = true;
+        }
+        _eventRemaining -= remaining;
+        return changed;
+    }
+
+    private void ResetBlinkSchedule()
+    {
+        _blinkStep = 0;
+        _eventRemaining = CurrentDefinition?.Mode == AnimationMode.IdleWithRandomBlink
+            ? NextDuration(CurrentDefinition.BlinkDelayMinMs, CurrentDefinition.BlinkDelayMaxMs) / 1000d
+            : 0;
+    }
+
+    private static int NextDuration(int min, int max)
+    {
+        min = Math.Max(1, min);
+        max = Math.Max(min, max);
+        return Random.Next(min, max + 1);
+    }
+
     private BitmapSource[] Load(SpriteAnimationDefinition definition)
     {
         if (string.IsNullOrWhiteSpace(definition.AssetPath) && string.IsNullOrWhiteSpace(definition.FolderPath) && definition.Frames.Length == 0)
             return Fallback(definition.Name);
-        var key = !string.IsNullOrWhiteSpace(definition.FolderPath) ? $"folder:{definition.FolderPath}"
-            : definition.Frames.Length > 0 ? $"frames:{string.Join('|', definition.Frames)}" : $"sheet:{definition.AssetPath}:{definition.FrameWidth}:{definition.FrameCount}";
+        var sourceKey = definition.Frames.Length > 0 ? $"frames:{string.Join('|', definition.Frames)}"
+            : !string.IsNullOrWhiteSpace(definition.FolderPath) ? $"folder:{definition.FolderPath}"
+            : $"sheet:{definition.AssetPath}:{definition.FrameWidth}:{definition.FrameHeight}:{definition.StartX}:{definition.StartY}:{definition.FrameGap}:{definition.FrameCount}";
+        var key = $"{sourceKey}:{definition.SourceScale}:{definition.HorizontalAnchor}:{definition.VerticalAnchor}:{definition.OffsetX}:{definition.OffsetY}";
         if (_framesByAsset.TryGetValue(key, out var cached)) return cached;
         try
         {
             BitmapSource[] sources;
             if (definition.Frames.Length > 0)
-                sources = definition.Frames.Select(x => ReadPng(Resolve(x))).ToArray();
+                sources = MultiFrameAnimationSource.Load(definition.Frames.Select(Resolve), definition, _canvasWidth, _canvasHeight);
             else if (!string.IsNullOrWhiteSpace(definition.FolderPath))
             {
                 var folder = Resolve(definition.FolderPath);
-                sources = Directory.Exists(folder) ? Directory.GetFiles(folder, "*.png").OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Select(ReadPng).ToArray() : [];
+                sources = Directory.Exists(folder) ? MultiFrameAnimationSource.Load(Directory.GetFiles(folder, "*.png").OrderBy(x => x, StringComparer.OrdinalIgnoreCase), definition, _canvasWidth, _canvasHeight) : [];
             }
             else
             {
-                var sheet = ReadPng(Resolve(definition.AssetPath));
-                var width = definition.FrameWidth > 0 ? definition.FrameWidth : definition.FrameCount > 0 ? sheet.PixelWidth / definition.FrameCount : 0;
-                if (width <= 0 || sheet.PixelWidth % width != 0) throw new InvalidDataException("Invalid sprite sheet frame width.");
-                var count = definition.FrameCount > 0 ? definition.FrameCount : sheet.PixelWidth / width;
-                if (count * width > sheet.PixelWidth) throw new InvalidDataException("Sprite sheet is too short.");
-                sources = Enumerable.Range(0, count).Select(i => (BitmapSource)new CroppedBitmap(sheet, new Int32Rect(i * width, 0, width, sheet.PixelHeight))).ToArray();
+                var sheet = MultiFrameAnimationSource.ReadPng(Resolve(definition.AssetPath));
+                var width = definition.FrameWidth > 0 ? definition.FrameWidth : definition.FrameCount > 0 ? (sheet.PixelWidth - definition.StartX - Math.Max(0, definition.FrameCount - 1) * definition.FrameGap) / definition.FrameCount : 0;
+                var height = definition.FrameHeight > 0 ? definition.FrameHeight : sheet.PixelHeight - definition.StartY;
+                var count = definition.FrameCount > 0 ? definition.FrameCount : width > 0 ? (sheet.PixelWidth - definition.StartX + definition.FrameGap) / (width + definition.FrameGap) : 0;
+                if (width <= 0 || height <= 0 || count <= 0) throw new InvalidDataException("Invalid sprite sheet frame dimensions.");
+                sources = Enumerable.Range(0, count).Select(i =>
+                {
+                    var x = definition.StartX + i * (width + definition.FrameGap);
+                    if (x < 0 || definition.StartY < 0 || x + width > sheet.PixelWidth || definition.StartY + height > sheet.PixelHeight)
+                        throw new InvalidDataException("Sprite frame lies outside the sheet.");
+                    return MultiFrameAnimationSource.PlaceOnCanvas(new CroppedBitmap(sheet, new Int32Rect(x, definition.StartY, width, height)), definition, _canvasWidth, _canvasHeight);
+                }).ToArray();
             }
             if (sources.Length == 0) throw new FileNotFoundException("No PNG frames found.");
             if (definition.FrameCount > 0 && definition.FrameCount != sources.Length) throw new InvalidDataException("Frame count does not match animation config.");
-            cached = sources.Select(PadToCanvas).ToArray();
+            if (definition.Mode == AnimationMode.IdleWithRandomBlink && sources.Length < 4) throw new InvalidDataException("Idle blink animations require at least four frames.");
+            cached = sources;
             _framesByAsset[key] = cached;
             LoggerService.Info($"Animation asset loaded: {definition.Name} ({cached.Length} frames)");
             return cached;
@@ -136,27 +243,4 @@ public sealed class SpriteAnimationController
 
     private BitmapSource[] Fallback(string name) { _fallbackNames.Add(name); return _fallback(name); }
     private static string Resolve(string relative) => Path.Combine(AppContext.BaseDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
-    private static BitmapSource ReadPng(string file)
-    {
-        if (!File.Exists(file)) throw new FileNotFoundException("Animation PNG missing.", file);
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit(); bitmap.UriSource = new Uri(file); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.EndInit(); bitmap.Freeze();
-        return bitmap;
-    }
-    private BitmapSource PadToCanvas(BitmapSource source)
-    {
-        if (source.PixelWidth > _canvasWidth || source.PixelHeight > _canvasHeight)
-            throw new InvalidDataException($"Frame {source.PixelWidth}x{source.PixelHeight} exceeds canvas {_canvasWidth}x{_canvasHeight}.");
-        var converted = new FormatConvertedBitmap(source, System.Windows.Media.PixelFormats.Bgra32, null, 0);
-        var rowBytes = source.PixelWidth * 4;
-        var raw = new byte[rowBytes * source.PixelHeight];
-        converted.CopyPixels(raw, rowBytes, 0);
-        var canvasStride = _canvasWidth * 4;
-        var canvas = new byte[canvasStride * _canvasHeight];
-        var top = _canvasHeight - source.PixelHeight;
-        for (var y = 0; y < source.PixelHeight; y++) Buffer.BlockCopy(raw, y * rowBytes, canvas, (top + y) * canvasStride, rowBytes);
-        var result = BitmapSource.Create(_canvasWidth, _canvasHeight, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, canvas, canvasStride);
-        result.Freeze();
-        return result;
-    }
 }

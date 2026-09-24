@@ -15,5 +15,6 @@
     <None Update="Data\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Music\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets\Characters\Girl\Mouse\*.png" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>

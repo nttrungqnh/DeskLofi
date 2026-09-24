@@ -2,10 +2,15 @@ namespace DeskLofi.Models;
 public sealed class AppSettings
 {
     public bool StartWithWindows { get; set; }
+    public string Language { get; set; } = "vi";
     public bool AlwaysOnTop { get; set; } = true;
+    public bool ShowOnTaskbar { get; set; }
     public bool ReactToKeyboard { get; set; } = true;
     public bool ReactToMouse { get; set; } = true;
     public int TypingIdleDelayMs { get; set; } = 1200;
+    public int MouseIdleDelayMs { get; set; } = 900;
+    public int MouseMoveThrottleMs { get; set; } = 100;
+    public int KeyboardPriorityWindowMs { get; set; } = 650;
     public int FastTypingWindowMs { get; set; } = 2000;
     public double FastTypingThresholdPerSecond { get; set; } = 7;
     public bool AutoPlayMusic { get; set; }
@@ -15,6 +20,7 @@ public sealed class AppSettings
     public double Volume { get; set; } = 0.35;
     public string Scene { get; set; } = "Bedroom";
     public double Left { get; set; } = -1;
+    public double TaskbarOffsetX { get; set; } = 93;
     public double Top { get; set; } = -1;
     public bool ShowClock { get; set; } = true;
     public bool ShowDate { get; set; }

@@ -1,11 +1,11 @@
 {
   "CanvasWidth": 517,
-  "CanvasHeight": 488,
+  "CanvasHeight": 491,
   "Animations": [
-    { "Name": "Idle", "Fps": 4, "Loop": true },
+    { "Name": "Idle", "FolderPath": "Assets/Characters/Girl/Idle", "FrameCount": 4, "Mode": "IdleWithRandomBlink", "BlinkDelayMinMs": 3000, "BlinkDelayMaxMs": 7000, "BlinkFrameDurationMinMs": 70, "BlinkFrameDurationMaxMs": 110, "DoubleBlinkChance": 0.125, "DoubleBlinkDelayMinMs": 120, "DoubleBlinkDelayMaxMs": 200 },
     { "Name": "Typing", "FolderPath": "Assets/Characters/Girl/Typing", "FrameCount": 4, "Fps": 6, "Loop": true },
     { "Name": "TypingFast", "FolderPath": "Assets/Characters/Girl/Typing", "FrameCount": 4, "Fps": 10, "Loop": true },
-    { "Name": "Mouse", "Fps": 4, "Loop": true },
+    { "Name": "Mouse", "Frames": ["Assets/Characters/Girl/Mouse/mouse_01.png", "Assets/Characters/Girl/Mouse/mouse_02.png", "Assets/Characters/Girl/Mouse/mouse_03.png", "Assets/Characters/Girl/Mouse/mouse_04.png", "Assets/Characters/Girl/Mouse/mouse_05.png"], "FrameCount": 5, "Fps": 4, "Mode": "PingPong", "Loop": true, "SourceScale": 1.05, "HorizontalAnchor": "Right", "VerticalAnchor": "Bottom", "OffsetX": -16 },
     { "Name": "Coffee", "Fps": 4, "Loop": true },
     { "Name": "Stretch", "Fps": 4, "Loop": true },
     { "Name": "LookWindow", "Fps": 4, "Loop": true },
