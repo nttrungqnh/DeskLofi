@@ -15,13 +15,17 @@ using MediaColor = System.Windows.Media.Color;
 namespace DeskLofi.Views;
 public partial class MainWindow : Window, IDisposable
 {
-    private readonly SettingsService _settings; private readonly TimeService _time=new(); private readonly DayNightService _dayNight; private readonly SceneDefinition _sceneDefinition; private readonly SceneDefinitionService _sceneDefinitions=new(); private readonly WeatherService _weather; private readonly WeatherEffectController _weatherEffects; private readonly AmbienceService _ambience; private readonly ActivityTracker _activity=new(); private readonly InputMonitor _input; private readonly CompanionStateManager _states; private readonly SpriteLoader _sprites=new(); private readonly SpriteAnimationController _girlAnimation; private readonly AnimationController _animation=new(); private readonly MusicService _music; private readonly DispatcherTimer _timer; private readonly Forms.NotifyIcon _tray; private long _lastAnimationTick=Stopwatch.GetTimestamp(); private int _ticks; private bool? _lastGirlFallback; private bool _isSeeking,_disposed; private TimePeriod? _assetFrom,_assetTo; private DateTime _lastMoveSave=DateTime.MinValue;
+    private const double GirlSceneWidth = 112, GirlSceneHeight = 106;
+    private enum GirlAnimationPhase { Idle, Typing, MouseEntering, MouseActive, MouseLeaving, IdleSpecialEntering, IdleSpecialHolding, IdleSpecialLeaving }
+    private const double CoffeeFrameSeconds = .16, CoffeeHoldSeconds = .7, StretchFrameSeconds = .18, StretchHoldSeconds = .8;
+    private readonly SettingsService _settings; private readonly TimeService _time=new(); private readonly DayNightService _dayNight; private readonly SceneDefinition _sceneDefinition; private readonly SceneDefinitionService _sceneDefinitions=new(); private readonly WeatherService _weather; private readonly WeatherEffectController _weatherEffects; private readonly AmbienceService _ambience; private readonly ActivityTracker _activity=new(); private readonly InputMonitor _input; private readonly CompanionStateManager _states; private readonly SpriteLoader _sprites=new(); private readonly AssetPackService _packs; private readonly GirlImageCache _girlImages; private readonly CatImageCache _catImages; private readonly CatStateMachine _catStates; private readonly BlinkController _blink; private readonly MusicService _music; private readonly DispatcherTimer _timer; private readonly Forms.NotifyIcon _tray; private long _lastAnimationTick=Stopwatch.GetTimestamp(); private int _ticks; private int _typingFrameIndex; private double _typingFrameElapsed; private bool _typingActive; private GirlAnimationPhase _girlAnimationPhase=GirlAnimationPhase.Idle; private int _mouseFrameIndex; private double _mouseFrameElapsed; private bool _typingAfterMouseLeave; private bool _typingAfterMouseMaster; private bool _isSeeking,_disposed; private bool _debugBlinkPreview = false; private TimePeriod? _assetFrom,_assetTo; private DateTime _lastMoveSave=DateTime.MinValue;
+    private GirlAction _activeIdleSpecial = GirlAction.None; private int _idleSpecialFrameIndex; private double _idleSpecialFrameElapsed;
 #if DEBUG
     private System.Windows.Controls.Primitives.Popup? _animationDebugPopup;
     private TextBlock? _animationDebugText;
-    private string? _debugAnimationOverride;
+    private string? _debugGirlFrame;
 #endif
-    public MainWindow(SettingsService settings)
+    public MainWindow(SettingsService settings, Func<GirlState>? chooseIdleSpecial = null)
     {
         InitializeComponent();
         IsVisibleChanged += OnAnimationVisibilityChanged;
@@ -42,25 +46,37 @@ public partial class MainWindow : Window, IDisposable
         _weather.WeatherChanged += OnWeatherChanged;
         _weatherEffects.LightningFlashed += OnLightningFlashed;
         _weatherEffects.Apply(_weather.Current.State, settings.Current.WeatherEffects, settings.Current.EnableLightning);
-        _states = new CompanionStateManager(_activity, settings.Current);
-        _girlAnimation = new SpriteAnimationController(
-            SpriteAnimationController.LoadCatalog(Path.Combine(AppContext.BaseDirectory, "Data", "girl-animations.json")),
-            name => [_sprites.GetFrame("Girl", name, 0)]);
-        _girlAnimation.Play("Idle");
+        _packs = new AssetPackService(settings.Current);
+        _girlImages = new GirlImageCache(_packs, () => _sprites.GetFrame("Girl", "Idle", 0));
+        _catImages = new CatImageCache(_packs);
+        _catStates = new CatStateMachine(sleepTimeoutSeconds: settings.Current.CatSleepTimeoutSeconds,
+            tailFrameCount: _catImages.TailFrames.Length, sleepFrameCount: _catImages.SleepFrames.Length);
+        _states = new CompanionStateManager(_activity, settings.Current, chooseIdleSpecial, HasGirlAnimation);
+        CatSprite.Source = _catImages.Master;
+        ApplyCharacterLayout(settings.Current.Scale);
+        _blink = new BlinkController(settings.Current);
         _input = new InputMonitor(settings.Current.MouseMoveThrottleMs);
         _input.KeyboardActivity += OnKeyboard;
         _input.MouseActivity += OnMouse;
-        _states.StateChanged += (_, _) => UpdateGirlAnimation();
+        _states.StateChanged += _ => UpdateGirlAnimation();
         _music=new(settings); _ambience=new(settings.Current.WeatherVolume);ShuffleButton.Opacity=_music.Shuffle?1:.55;RepeatButton.Opacity=_music.Repeat?1:.55;PopulatePlaylists();_music.TrackChanged+=OnTrackChanged;_music.PlaybackChanged+=OnPlaybackChanged;_music.LibraryChanged+=OnMusicLibraryChanged;
-        _timer=new(){Interval=TimeSpan.FromMilliseconds(50)};_timer.Tick+=(_,_)=>{var now=Stopwatch.GetTimestamp();_girlAnimation.Advance(Stopwatch.GetElapsedTime(_lastAnimationTick,now));_lastAnimationTick=now;_animation.Advance();if(++_ticks%2==0)_states.Tick();if(_ticks%20==0)UpdateProgress();Render();};_timer.Start();
+        _timer=new(){Interval=TimeSpan.FromMilliseconds(25)};_timer.Tick+=(_,_)=>{var now=Stopwatch.GetTimestamp();var elapsed=Stopwatch.GetElapsedTime(_lastAnimationTick,now);_blink.Advance(elapsed);_lastAnimationTick=now;AdvanceGirlAnimation(elapsed);_catStates.Advance(elapsed);if(++_ticks%4==0){_states.Tick();UpdateBlinkEligibility();}if(_ticks%40==0)UpdateProgress();Render();};_timer.Start();
         _tray=new Forms.NotifyIcon{Text="DeskLofi",Icon=System.Drawing.SystemIcons.Application,Visible=true};_tray.ContextMenuStrip=new Forms.ContextMenuStrip();_tray.ContextMenuStrip.Items.Add("Show DeskLofi",null,(_,_)=>Show());_tray.ContextMenuStrip.Items.Add("Play / Pause",null,(_,_)=>ToggleMusic());_tray.ContextMenuStrip.Items.Add("Next Track",null,(_,_)=>_music.Next());_tray.ContextMenuStrip.Items.Add("Settings",null,(_,_)=>OpenSettings());_tray.ContextMenuStrip.Items.Add("Exit",null,(_,_)=>ExitApp());_tray.DoubleClick+=(_,_)=>Show();
         ApplyLanguage();
-        Topmost=settings.Current.AlwaysOnTop;ShowInTaskbar=settings.Current.ShowOnTaskbar; Width=112*settings.Current.Scale;Height=106*settings.Current.Scale;Scene.LayoutTransform=new ScaleTransform(settings.Current.Scale,settings.Current.Scale);
+        Topmost=settings.Current.AlwaysOnTop;ShowInTaskbar=settings.Current.ShowOnTaskbar;
 #if DEBUG
         CreateAnimationDebugPanel();
 #endif
     }
     private string T(string vietnamese,string english)=>UiText.Choose(_settings.Current.Language,vietnamese,english);
+    private bool HasGirlAnimation(GirlState state) => state switch
+    {
+        GirlState.Typing or GirlState.TypingFast => _girlImages.TypingFrames.Length > 0,
+        GirlState.Mouse => _girlImages.MouseFrames.Length > 0,
+        GirlState.Coffee => _girlImages.CoffeeFrames.Length > 0,
+        GirlState.Stretch => _girlImages.StretchFrames.Length > 0,
+        _ => true
+    };
     private void ApplyLanguage()
     {
         UiText.TranslateTree(this,_settings.Current.Language);
@@ -77,7 +93,7 @@ public partial class MainWindow : Window, IDisposable
         PopulatePlaylists();
         UpdateTrack();
     }
-    private void OnLoaded(object sender,RoutedEventArgs e){PositionOnTaskbar();ApplySceneDefinition();UpdateClock();UpdateDayNight(_dayNight.CurrentPeriod,_dayNight.CurrentPeriod,1);ApplyWeatherVisual(_weather.Current);Render();ApplyWindowLayering();if(_settings.Current.AutoPlayMusic)_music.Toggle();}
+    private void OnLoaded(object sender,RoutedEventArgs e){ApplyCharacterLayout(_settings.Current.Scale);PositionOnTaskbar();ApplySceneDefinition();UpdateClock();UpdateDayNight(_dayNight.CurrentPeriod,_dayNight.CurrentPeriod,1);ApplyWeatherVisual(_weather.Current);UpdateBlinkEligibility();Render();ApplyWindowLayering();if(_settings.Current.AutoPlayMusic)_music.Toggle();}
     private void OnSourceInitialized(object? sender,EventArgs e){ApplyTaskbarVisibility();ApplyWindowLayering();}
     private void ApplyTaskbarVisibility()
     {
@@ -116,36 +132,212 @@ public partial class MainWindow : Window, IDisposable
         Left=Math.Clamp(desiredLeft,minLeft,maxLeft);
         Top=wa.Value.Bottom*scale-Height;
     }
-    private void OnKeyboard(DateTime at)=>Dispatcher.BeginInvoke(()=>{_activity.Keyboard(at);_states.Tick();Render();},DispatcherPriority.Input);
-    private void OnMouse(DateTime at)=>_activity.Mouse(at);
+    private void OnKeyboard(DateTime at)=>Dispatcher.BeginInvoke(()=>{_activity.Keyboard(at);_catStates.NotifyActivity(true,at);_blink.SetCanBlink(false);_states.Tick();UpdateBlinkEligibility();Render();},DispatcherPriority.Input);
+    private void OnMouse(DateTime at)=>Dispatcher.BeginInvoke(()=>{_activity.Mouse(at);_catStates.NotifyActivity(false,at);_blink.SetCanBlink(false);_states.Tick();UpdateBlinkEligibility();Render();},DispatcherPriority.Input);
     private void OnAnimationVisibilityChanged(object sender,DependencyPropertyChangedEventArgs e)=>UpdateAnimationActivity();
     private void OnAnimationWindowStateChanged(object? sender,EventArgs e)=>UpdateAnimationActivity();
     private void UpdateAnimationActivity()
     {
         var active=IsVisible&&WindowState!=WindowState.Minimized;
-        _girlAnimation.SetSceneActive(active);
+        _blink.SetCanBlink(active && _girlImages.HasBlink && _girlAnimationPhase==GirlAnimationPhase.Idle && (_states.Girl==GirlState.Idle || _debugBlinkPreview));
         if(active){_lastAnimationTick=Stopwatch.GetTimestamp();_timer.Start();}
         else _timer.Stop();
     }
+    private void UpdateBlinkEligibility()
+    {
+        var lastKey = _activity.LastKeyboardActivity;
+        var lastMouse = _activity.LastMouseActivity;
+        var lastActivityIsKeyboard = lastKey >= lastMouse;
+        var lastActivity = lastActivityIsKeyboard ? lastKey : lastMouse;
+        var idleDelay = lastActivityIsKeyboard ? _settings.Current.TypingIdleDelayMs : _settings.Current.MouseIdleDelayMs;
+        var activitySettled = lastActivity == DateTime.MinValue || DateTime.UtcNow - lastActivity >= TimeSpan.FromMilliseconds(Math.Max(0, idleDelay));
+        var idlePhase = _girlAnimationPhase == GirlAnimationPhase.Idle;
+        _blink.SetCanBlink(IsVisible && WindowState != WindowState.Minimized && _girlImages.HasBlink && idlePhase && !_typingAfterMouseMaster && activitySettled && (_states.Girl == GirlState.Idle || _debugBlinkPreview));
+    }
     private void UpdateGirlAnimation()
     {
-        var animation = _states.Girl.ToString();
-#if DEBUG
-        animation = _debugAnimationOverride ?? animation;
-#endif
-        _girlAnimation.Play(animation);
+        var typing = _states.Girl is GirlState.Typing or GirlState.TypingFast;
+        if (_states.Action is GirlAction.Coffee or GirlAction.Stretch)
+        {
+            if (_girlAnimationPhase is not (GirlAnimationPhase.IdleSpecialEntering or GirlAnimationPhase.IdleSpecialHolding or GirlAnimationPhase.IdleSpecialLeaving))
+            {
+                _activeIdleSpecial = _states.Action;
+                var frames = _states.Action == GirlAction.Stretch ? _girlImages.StretchFrames : _girlImages.CoffeeFrames;
+                _girlAnimationPhase = frames.Length <= 1 ? GirlAnimationPhase.IdleSpecialHolding : GirlAnimationPhase.IdleSpecialEntering;
+                _idleSpecialFrameIndex = 0;
+                _idleSpecialFrameElapsed = 0;
+                _typingActive = false;
+            }
+            UpdateBlinkEligibility();
+            Render();
+            return;
+        }
+        if (_states.Girl == GirlState.Mouse)
+        {
+            if (_girlAnimationPhase is not (GirlAnimationPhase.MouseEntering or GirlAnimationPhase.MouseActive))
+            {
+                _girlAnimationPhase = GirlAnimationPhase.MouseEntering;
+                _mouseFrameIndex = 0;
+                _mouseFrameElapsed = 0;
+                _typingAfterMouseLeave = false;
+            }
+        }
+        else if (_girlAnimationPhase is GirlAnimationPhase.MouseEntering or GirlAnimationPhase.MouseActive)
+        {
+            _girlAnimationPhase = GirlAnimationPhase.MouseLeaving;
+            _mouseFrameIndex = Math.Min(1, _girlImages.MouseFrames.Length - 1);
+            _mouseFrameElapsed = 0;
+            _typingAfterMouseLeave = typing;
+        }
+        else if (_girlAnimationPhase == GirlAnimationPhase.MouseLeaving)
+        {
+            _typingAfterMouseLeave = typing;
+        }
+        else if (typing)
+        {
+            if (_girlAnimationPhase != GirlAnimationPhase.Typing)
+            {
+                _girlAnimationPhase = GirlAnimationPhase.Typing;
+                _typingFrameIndex = 0;
+                _typingFrameElapsed = 0;
+            }
+        }
+        else
+        {
+            _girlAnimationPhase = GirlAnimationPhase.Idle;
+            _typingFrameElapsed = 0;
+        }
+        _typingActive = _girlAnimationPhase == GirlAnimationPhase.Typing;
+        UpdateBlinkEligibility();
         Render();
     }
-    private void Render(){if(!IsLoaded)return;var source=_girlAnimation.CurrentFrame;if(!ReferenceEquals(GirlSprite.Source,source))GirlSprite.Source=source;var fallback=_girlAnimation.UsingFallback;if(_lastGirlFallback!=fallback){GirlSprite.Width=fallback?64:112;GirlSprite.Height=fallback?64:106;Canvas.SetTop(GirlSprite,fallback?42:0);MonitorArtwork.Visibility=fallback?Visibility.Visible:Visibility.Collapsed;_lastGirlFallback=fallback;}var cat=_sprites.GetFrame("Cat",_states.Cat.ToString(),_animation.Frame/10);if(!ReferenceEquals(CatSprite.Source,cat))CatSprite.Source=cat;
-#if DEBUG
-        if(_animationDebugPopup?.IsOpen==true&&_animationDebugText!=null)
+    private void AdvanceGirlAnimation(TimeSpan elapsed)
+    {
+        var delta = Math.Max(0, elapsed.TotalSeconds);
+        if (_girlAnimationPhase == GirlAnimationPhase.Idle && _typingAfterMouseMaster)
         {
-            var blink = _girlAnimation.NextBlinkInSeconds is double next ? $"{next:0.0}s" : "—";
-            var speed = _girlAnimation.CurrentMode is AnimationMode.Loop or AnimationMode.PingPong ? $"{_girlAnimation.CurrentFps:0.#} FPS" : "event driven";
-            var now = DateTime.UtcNow;
-            var keyboardAge = _activity.LastKeyboardActivity == DateTime.MinValue ? "never" : $"{(now-_activity.LastKeyboardActivity).TotalMilliseconds:0}ms ago";
-            var mouseAge = _activity.LastMouseActivity == DateTime.MinValue ? "never" : $"{(now-_activity.LastMouseActivity).TotalMilliseconds:0}ms ago";
-            _animationDebugText.Text=$"Girl State: {_states.Girl}\nAnimation: {_girlAnimation.CurrentAnimation}\nFrame: {_girlAnimation.FrameIndex+1:00} / {_girlAnimation.FrameCount:00}\nSpeed: {speed}\nLast Keyboard Activity: {keyboardAge}\nLast Mouse Activity: {mouseAge}\nNext Blink: {blink}";
+            _typingAfterMouseMaster = false;
+            if (_states.Girl is GirlState.Typing or GirlState.TypingFast)
+            {
+                _girlAnimationPhase = GirlAnimationPhase.Typing;
+                _typingActive = true;
+                _typingFrameIndex = 0;
+                _typingFrameElapsed = 0;
+            }
+        }
+        if (_girlAnimationPhase == GirlAnimationPhase.Typing && _typingActive && _girlImages.TypingFrames.Length > 0)
+        {
+            _typingFrameElapsed += delta;
+            var frameDuration = 1d / (_states.Girl == GirlState.TypingFast ? 10d : 6d);
+            var steps = (int)(_typingFrameElapsed / frameDuration);
+            if (steps > 0) { _typingFrameElapsed -= steps * frameDuration; _typingFrameIndex = (_typingFrameIndex + steps) % _girlImages.TypingFrames.Length; }
+            return;
+        }
+        if (_girlAnimationPhase is GirlAnimationPhase.IdleSpecialEntering or GirlAnimationPhase.IdleSpecialHolding or GirlAnimationPhase.IdleSpecialLeaving)
+        {
+            var frames = _activeIdleSpecial == GirlAction.Stretch ? _girlImages.StretchFrames : _girlImages.CoffeeFrames;
+            var normalFrameSeconds = _activeIdleSpecial == GirlAction.Stretch ? StretchFrameSeconds : CoffeeFrameSeconds;
+            var holdSeconds = _activeIdleSpecial == GirlAction.Stretch ? StretchHoldSeconds : CoffeeHoldSeconds;
+            _idleSpecialFrameElapsed += delta;
+            while (_girlAnimationPhase is GirlAnimationPhase.IdleSpecialEntering or GirlAnimationPhase.IdleSpecialHolding or GirlAnimationPhase.IdleSpecialLeaving)
+            {
+                var duration = _girlAnimationPhase == GirlAnimationPhase.IdleSpecialHolding ? holdSeconds : normalFrameSeconds;
+                if (_idleSpecialFrameElapsed < duration) break;
+                _idleSpecialFrameElapsed -= duration;
+                if (_girlAnimationPhase == GirlAnimationPhase.IdleSpecialEntering)
+                {
+                    _idleSpecialFrameIndex++;
+                    if (_idleSpecialFrameIndex == frames.Length - 1) _girlAnimationPhase = GirlAnimationPhase.IdleSpecialHolding;
+                }
+                else if (_girlAnimationPhase == GirlAnimationPhase.IdleSpecialHolding)
+                {
+                    _girlAnimationPhase = GirlAnimationPhase.IdleSpecialLeaving;
+                    _idleSpecialFrameIndex = Math.Max(0, _idleSpecialFrameIndex - 1);
+                }
+                else if (_idleSpecialFrameIndex > 0) _idleSpecialFrameIndex--;
+                else
+                {
+                    _girlAnimationPhase = GirlAnimationPhase.Idle;
+                    _activeIdleSpecial = GirlAction.None;
+                    _idleSpecialFrameElapsed = 0;
+                    _states.CompleteAction();
+                    UpdateBlinkEligibility();
+                    break;
+                }
+            }
+            return;
+        }
+        if (_girlAnimationPhase is not (GirlAnimationPhase.MouseEntering or GirlAnimationPhase.MouseActive or GirlAnimationPhase.MouseLeaving)) return;
+        if (_girlImages.MouseFrames.Length == 0) { _girlAnimationPhase = GirlAnimationPhase.Idle; return; }
+        var activeIndex = Math.Max(0, _girlImages.MouseFrames.Length - 2);
+        var lastIndex = _girlImages.MouseFrames.Length - 1;
+        _mouseFrameElapsed += delta;
+        var frameDurationSeconds = _girlAnimationPhase == GirlAnimationPhase.MouseActive ? .18 : .12;
+        while (_mouseFrameElapsed >= frameDurationSeconds)
+        {
+            _mouseFrameElapsed -= frameDurationSeconds;
+            if (_girlAnimationPhase == GirlAnimationPhase.MouseEntering)
+            {
+                if (_mouseFrameIndex < activeIndex) _mouseFrameIndex++;
+                else { _mouseFrameIndex = activeIndex; _girlAnimationPhase = GirlAnimationPhase.MouseActive; frameDurationSeconds = .18; }
+            }
+            else if (_girlAnimationPhase == GirlAnimationPhase.MouseActive)
+            {
+                _mouseFrameIndex = _mouseFrameIndex == activeIndex ? lastIndex : activeIndex;
+            }
+            else if (_mouseFrameIndex > 0) _mouseFrameIndex--;
+            else
+            {
+                var resumeTyping = _typingAfterMouseLeave && (_states.Girl is GirlState.Typing or GirlState.TypingFast);
+                _girlAnimationPhase = GirlAnimationPhase.Idle;
+                _typingAfterMouseLeave = false;
+                _typingAfterMouseMaster = resumeTyping;
+                _typingActive = false;
+                _mouseFrameElapsed = 0;
+                UpdateBlinkEligibility();
+                break;
+            }
+            frameDurationSeconds = _girlAnimationPhase == GirlAnimationPhase.MouseActive ? .18 : .12;
+        }
+    }
+    private void Render()
+    {
+        if (!IsLoaded) return;
+#if DEBUG
+        var debugFrame = _debugGirlFrame;
+#else
+        string? debugFrame = null;
+#endif
+        var source = debugFrame switch
+        {
+            "HALF" => _girlImages.BlinkHalf,
+            "CLOSE" => _girlImages.BlinkClose,
+            "MASTER" => _girlImages.Master,
+            _ when _girlAnimationPhase is GirlAnimationPhase.IdleSpecialEntering or GirlAnimationPhase.IdleSpecialHolding or GirlAnimationPhase.IdleSpecialLeaving =>
+                (_activeIdleSpecial == GirlAction.Stretch ? _girlImages.StretchFrames : _girlImages.CoffeeFrames).ElementAtOrDefault(_idleSpecialFrameIndex) ?? _girlImages.Master,
+            _ when _girlAnimationPhase is GirlAnimationPhase.MouseEntering or GirlAnimationPhase.MouseActive or GirlAnimationPhase.MouseLeaving => _girlImages.MouseFrames.ElementAtOrDefault(_mouseFrameIndex) ?? _girlImages.Master,
+            _ when _girlAnimationPhase == GirlAnimationPhase.Typing => _girlImages.TypingFrames.ElementAtOrDefault(_typingFrameIndex) ?? _girlImages.Master,
+            _ when _girlAnimationPhase == GirlAnimationPhase.Idle && (_debugBlinkPreview || _states.Girl == GirlState.Idle) => _blink.Frame switch
+            {
+                BlinkFrame.Half => _girlImages.BlinkHalf,
+                BlinkFrame.Closed => _girlImages.BlinkClose,
+                _ => _girlImages.Master
+            },
+            _ => _girlImages.Master
+        };
+        if (!ReferenceEquals(GirlSprite.Source, source)) GirlSprite.Source = source;
+        var cat = _catStates.State switch
+        {
+            CatState.TailWag => _catImages.TailFrames.ElementAtOrDefault(_catStates.TailFrameIndex) ?? _catImages.Master,
+            CatState.GoingToSleep or CatState.Sleeping or CatState.WakingUp => _catImages.SleepFrames.ElementAtOrDefault(_catStates.SleepFrameIndex) ?? _catImages.Master,
+            _ => _catImages.Master
+        };
+        if (!ReferenceEquals(CatSprite.Source, cat)) CatSprite.Source = cat;
+#if DEBUG
+        if (_animationDebugPopup?.IsOpen == true && _animationDebugText != null)
+        {
+            var blink = _blink.NextBlinkInSeconds is double next ? $"{next:0.0}s" : "—";
+            _animationDebugText.Text = $"User: {_states.Activity}  Girl Action: {_states.Action}\nCat State: {_catStates.State}\nBlink: {_blink.Frame}  Next: {blink}";
         }
 #endif
     }
@@ -155,39 +347,63 @@ public partial class MainWindow : Window, IDisposable
         var panel = new StackPanel();
         _animationDebugText = new TextBlock { Foreground = System.Windows.Media.Brushes.White, Margin = new Thickness(4), FontSize = 11 };
         panel.Children.Add(_animationDebugText);
-        var animations = new WrapPanel();
-        foreach (var name in new[] { "Idle", "Typing", "TypingFast", "Mouse" })
+        var previews = new WrapPanel();
+        foreach (var (label, frame) in new[] { ("MASTER", "MASTER"), ("HALF", "HALF"), ("CLOSE", "CLOSE") })
         {
-            var animation = name;
-            var button = new System.Windows.Controls.Button { Content = animation == "Mouse" ? "Play Mouse" : animation, Margin = new Thickness(2) };
-            button.Click += (_, _) => { _debugAnimationOverride = animation; UpdateGirlAnimation(); };
-            animations.Children.Add(button);
+            var imageFrame = frame;
+            var button = new System.Windows.Controls.Button { Content = label, Margin = new Thickness(2) };
+            button.Click += (_, _) => { _debugBlinkPreview = false; _debugGirlFrame = imageFrame; UpdateBlinkEligibility(); Render(); };
+            previews.Children.Add(button);
         }
-        var blinkNow = new System.Windows.Controls.Button { Content = "Blink Now", Margin = new Thickness(2) };
-        blinkNow.Click += (_, _) => { _debugAnimationOverride = "Idle"; _girlAnimation.Play("Idle"); _girlAnimation.BlinkNow(); Render(); };
-        animations.Children.Add(blinkNow);
+        var play = new System.Windows.Controls.Button { Content = "Play Blink", Margin = new Thickness(2) };
+        play.Click += (_, _) => { _debugGirlFrame = null; _debugBlinkPreview = true; UpdateBlinkEligibility(); _blink.BlinkNow(); Render(); };
+        previews.Children.Add(play);
         var auto = new System.Windows.Controls.Button { Content = "Auto", Margin = new Thickness(2) };
-        auto.Click += (_, _) => { _debugAnimationOverride = null; _girlAnimation.SetFpsOverride(null); UpdateGirlAnimation(); };
-        animations.Children.Add(auto); panel.Children.Add(animations);
-        var speeds = new WrapPanel();
-        foreach (var fps in new[] { 4, 5, 6, 7, 8, 10 })
+        auto.Click += (_, _) => { _debugGirlFrame = null; _debugBlinkPreview = false; UpdateBlinkEligibility(); Render(); };
+        previews.Children.Add(auto);
+        foreach (var action in new[] { GirlAction.Coffee, GirlAction.Stretch })
         {
-            var speed = fps;
-            var button = new System.Windows.Controls.Button { Content = $"{fps} FPS", Margin = new Thickness(2) };
-            button.Click += (_, _) => { _girlAnimation.SetFpsOverride(speed); Render(); };
-            speeds.Children.Add(button);
+            var force = new System.Windows.Controls.Button { Content = $"Force {action}", Margin = new Thickness(2) };
+            force.Click += (_, _) => { _debugGirlFrame = null; _debugBlinkPreview = false; _states.ForceAction(action); Render(); };
+            previews.Children.Add(force);
         }
-        panel.Children.Add(speeds);
-        _animationDebugPopup = new System.Windows.Controls.Primitives.Popup { PlacementTarget = this, Placement = System.Windows.Controls.Primitives.PlacementMode.Top,
+        panel.Children.Add(previews);
+        _animationDebugPopup = new System.Windows.Controls.Primitives.Popup
+        {
+            PlacementTarget = this, Placement = System.Windows.Controls.Primitives.PlacementMode.Top,
             StaysOpen = true, AllowsTransparency = true,
             Child = new Border { Background = new SolidColorBrush(MediaColor.FromArgb(240, 30, 29, 45)),
-                BorderBrush = System.Windows.Media.Brushes.LightGray, BorderThickness = new Thickness(1), Padding = new Thickness(5), Child = panel } };
-        _tray.ContextMenuStrip!.Items.Insert(4, new Forms.ToolStripMenuItem("Animation debug", null, (_, _) => _animationDebugPopup.IsOpen = !_animationDebugPopup.IsOpen));
+                BorderBrush = System.Windows.Media.Brushes.LightGray, BorderThickness = new Thickness(1), Padding = new Thickness(5), Child = panel }
+        };
+        _tray.ContextMenuStrip!.Items.Insert(4, new Forms.ToolStripMenuItem("Blink debug", null, (_, _) => _animationDebugPopup.IsOpen = !_animationDebugPopup.IsOpen));
+        _tray.ContextMenuStrip.Items.Insert(5, new Forms.ToolStripMenuItem("Force Cat Tail Wag", null, (_, _) => { _catStates.ForceTailWag(); Render(); }));
+        _tray.ContextMenuStrip.Items.Insert(6, new Forms.ToolStripMenuItem("Force Cat Sleep", null, (_, _) => { _catStates.ForceSleep(); Render(); }));
+        _tray.ContextMenuStrip.Items.Insert(7, new Forms.ToolStripMenuItem("Force Cat Wake", null, (_, _) => { _catStates.ForceWake(); Render(); }));
+        _tray.ContextMenuStrip.Items.Insert(8, new Forms.ToolStripMenuItem("Force Coffee", null, (_, _) => { _debugGirlFrame = null; _debugBlinkPreview = false; _states.ForceAction(GirlAction.Coffee); Render(); }));
+        _tray.ContextMenuStrip.Items.Insert(9, new Forms.ToolStripMenuItem("Force Stretch", null, (_, _) => { _debugGirlFrame = null; _debugBlinkPreview = false; _states.ForceAction(GirlAction.Stretch); Render(); }));
     }
 #endif
     private void OnDayNightTransition(TimePeriod from,TimePeriod to,double amount)=>UpdateDayNight(from,to,amount);
     private void UpdateDayNight(TimePeriod from,TimePeriod to,double amount){SkyLayer.Fill=BlendLayerColor(_sceneDefinition.SkyColors,from,to,amount,"#FF25365D");LightingLayer.Fill=BlendLayerColor(_sceneDefinition.LightingColors,from,to,amount,"#00000000");LampGlow.Opacity=LampAmount(from)+(LampAmount(to)-LampAmount(from))*amount;if(_assetFrom!=from||_assetTo!=to){_assetFrom=from;_assetTo=to;SkyImageFrom.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.SkyAssets.GetValueOrDefault(from.ToString()));SkyImageTo.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.SkyAssets.GetValueOrDefault(to.ToString()));LightingImageFrom.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.LightingAssets.GetValueOrDefault(from.ToString()));LightingImageTo.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.LightingAssets.GetValueOrDefault(to.ToString()));}SkyImageFrom.Opacity=SkyImageFrom.Source is null?0:1-amount;SkyImageTo.Opacity=SkyImageTo.Source is null?0:amount;LightingImageFrom.Opacity=LightingImageFrom.Source is null?0:1-amount;LightingImageTo.Opacity=LightingImageTo.Source is null?0:amount;}
-    private void ApplySceneDefinition(){var w=_sceneDefinition.WindowBounds;Canvas.SetLeft(SkyLayer,w.X);Canvas.SetTop(SkyLayer,w.Y);SkyLayer.Width=w.Width;SkyLayer.Height=w.Height;foreach(var image in new[]{SkyImageFrom,SkyImageTo}){Canvas.SetLeft(image,w.X);Canvas.SetTop(image,w.Y);image.Width=w.Width;image.Height=w.Height;}Canvas.SetLeft(WeatherLayer,w.X);Canvas.SetTop(WeatherLayer,w.Y);Canvas.SetLeft(LightningLayer,w.X);Canvas.SetTop(LightningLayer,w.Y);LightningLayer.Width=w.Width;LightningLayer.Height=w.Height;Canvas.SetLeft(WindowFrame,w.X-3);Canvas.SetTop(WindowFrame,w.Y-3);WindowFrame.Width=w.Width+6;WindowFrame.Height=w.Height+6;Canvas.SetLeft(CatSprite,_sceneDefinition.CatPosition.X);Canvas.SetTop(CatSprite,_sceneDefinition.CatPosition.Y);Canvas.SetLeft(ClockObject,_sceneDefinition.ClockPosition.X);Canvas.SetTop(ClockObject,_sceneDefinition.ClockPosition.Y);_weatherEffects.SetViewport(w.Width,w.Height);BaseBackgroundLayer.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.BaseBackground);BaseBackgroundLayer.Visibility=BaseBackgroundLayer.Source is null?Visibility.Collapsed:Visibility.Visible;}
+    private void ApplySceneDefinition(){var w=_sceneDefinition.WindowBounds;Canvas.SetLeft(SkyLayer,w.X);Canvas.SetTop(SkyLayer,w.Y);SkyLayer.Width=w.Width;SkyLayer.Height=w.Height;foreach(var image in new[]{SkyImageFrom,SkyImageTo}){Canvas.SetLeft(image,w.X);Canvas.SetTop(image,w.Y);image.Width=w.Width;image.Height=w.Height;}Canvas.SetLeft(WeatherLayer,w.X);Canvas.SetTop(WeatherLayer,w.Y);Canvas.SetLeft(LightningLayer,w.X);Canvas.SetTop(LightningLayer,w.Y);LightningLayer.Width=w.Width;LightningLayer.Height=w.Height;Canvas.SetLeft(WindowFrame,w.X-3);Canvas.SetTop(WindowFrame,w.Y-3);WindowFrame.Width=w.Width+6;WindowFrame.Height=w.Height+6;Canvas.SetLeft(ClockObject,_sceneDefinition.ClockPosition.X);Canvas.SetTop(ClockObject,_sceneDefinition.ClockPosition.Y);_weatherEffects.SetViewport(w.Width,w.Height);BaseBackgroundLayer.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.BaseBackground);BaseBackgroundLayer.Visibility=BaseBackgroundLayer.Source is null?Visibility.Collapsed:Visibility.Visible;}
+    private void ApplyCharacterLayout(double scale)
+    {
+        scale = Math.Clamp(scale, 0.75, 2.0);
+        var catScale = double.IsFinite(_settings.Current.CatScale) ? Math.Clamp(_settings.Current.CatScale, 0.02, 0.2) : AppSettings.DefaultCatScale;
+        var catX = double.IsFinite(_settings.Current.CatOffsetX) ? _settings.Current.CatOffsetX : AppSettings.DefaultCatOffsetX;
+        var catY = double.IsFinite(_settings.Current.CatOffsetY) ? _settings.Current.CatOffsetY : AppSettings.DefaultCatOffsetY;
+        CatSprite.Width = _catImages.Master.PixelWidth * catScale;
+        CatSprite.Height = _catImages.Master.PixelHeight * catScale;
+        Canvas.SetLeft(CatSprite, catX);
+        Canvas.SetTop(CatSprite, catY);
+        Scene.Width = Math.Max(GirlSceneWidth, catX + CatSprite.Width);
+        Scene.Height = Math.Max(GirlSceneHeight, catY + CatSprite.Height);
+        CatLayer.Width = Scene.Width;
+        CatLayer.Height = Scene.Height;
+        Width = Scene.Width * scale;
+        Height = Scene.Height * scale;
+        Scene.LayoutTransform = new ScaleTransform(scale, scale);
+    }
     private static double LampAmount(TimePeriod p)=>p is TimePeriod.Evening or TimePeriod.Night?0.85:0;
     private static System.Windows.Media.Brush BlendLayerColor(Dictionary<string,string> colors,TimePeriod from,TimePeriod to,double amount,string fallback){try{var ca=(MediaColor)System.Windows.Media.ColorConverter.ConvertFromString(colors.GetValueOrDefault(from.ToString(),fallback));var cb=(MediaColor)System.Windows.Media.ColorConverter.ConvertFromString(colors.GetValueOrDefault(to.ToString(),fallback));return new SolidColorBrush(MediaColor.FromArgb((byte)(ca.A+(cb.A-ca.A)*amount),(byte)(ca.R+(cb.R-ca.R)*amount),(byte)(ca.G+(cb.G-ca.G)*amount),(byte)(ca.B+(cb.B-ca.B)*amount)));}catch{return System.Windows.Media.Brushes.Transparent;}}
     private void UpdateClock(){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(UpdateClock);return;}var display=_time.CurrentTime;
@@ -224,9 +440,9 @@ public partial class MainWindow : Window, IDisposable
         catch { }
     }
     private void OnRightClick(object s,MouseButtonEventArgs e){var menu=new ContextMenu();void Add(string text,RoutedEventHandler action){var item=new MenuItem{Header=text};item.Click+=action;menu.Items.Add(item);}Add(_music.IsPlaying?T("Tạm dừng","Pause"):T("Phát","Play"),(_,_)=>ToggleMusic());Add(T("Bài tiếp","Next track"),(_,_)=>_music.Next());Add(T("Điều khiển nhạc","Music controls"),(_,_)=>OpenMusicPopup());menu.Items.Add(new Separator());Add(T("Cài đặt","Settings"),(_,_)=>OpenSettings());Add(T("Thoát","Exit"),(_,_)=>ExitApp());ContextMenu=menu;menu.IsOpen=true;}
-    private void OnCatMouseDown(object s,MouseButtonEventArgs e){if(e.ClickCount>1){_states.ReactToCat(true);e.Handled=true;}}
+    private void OnCatMouseDown(object s,MouseButtonEventArgs e){if(e.ClickCount>1){_catStates.ForceTailWag();Render();e.Handled=true;}}
     private void OnGirlClick(object s,MouseButtonEventArgs e){e.Handled=true;}
-    private void OnCatClick(object s,MouseButtonEventArgs e){_states.ReactToCat();}
+    private void OnCatClick(object s,MouseButtonEventArgs e){_catStates.ForceTailWag();Render();}
     private void OnRadioClick(object s,MouseButtonEventArgs e){OpenMusicPopup();e.Handled=true;}
     private void OpenMusicPopup(){MusicPopup.PlacementTarget=this;MusicPopup.Placement=System.Windows.Controls.Primitives.PlacementMode.Top;MusicPopup.IsOpen=true;UpdateTrack();}
     private void OnPrevious(object s,RoutedEventArgs e)=>_music.Previous(); private void OnNext(object s,RoutedEventArgs e)=>_music.Next(); private void OnPlayPause(object s,RoutedEventArgs e)=>ToggleMusic();
@@ -300,17 +516,23 @@ public partial class MainWindow : Window, IDisposable
     private readonly DispatcherTimer _feedbackTimer=new(){Interval=TimeSpan.FromSeconds(2)};
     private void ShowAddFeedback(int count){DropFeedbackText.Text=count==0?T("Không thêm được bài hát phù hợp","No supported tracks added"):T($"Đã thêm {count} bài hát",$"{count} track{(count==1?"":"s")} added");DropFeedback.Visibility=Visibility.Visible;_feedbackTimer.Stop();_feedbackTimer.Tick-=HideFeedback;_feedbackTimer.Tick+=HideFeedback;_feedbackTimer.Start();}
     private void HideFeedback(object? sender,EventArgs e){DropFeedback.Visibility=Visibility.Collapsed;_feedbackTimer.Stop();}
+    private void ApplyCharacterScalePreview(double scale)
+    {
+        scale = Math.Clamp(scale, 0.75, 2.0);
+        ApplyCharacterLayout(scale);
+        PositionOnTaskbar();
+    }
     private void OnVolumeChanged(object s,RoutedPropertyChangedEventArgs<double> e){if(_music==null)return;_music.Volume=e.NewValue;_settings.Current.Volume=e.NewValue;_settings.Save();}
     private void OpenSettings()
     {
         var window=new SettingsWindow(_settings,_music){Owner=this};
+        window.CharacterScalePreviewChanged += ApplyCharacterScalePreview;
         window.Closed+=(_,_)=>
         {
             ApplyTaskbarVisibility();
+            UpdateBlinkEligibility();
             ApplyWindowLayering();
-            Width=112*_settings.Current.Scale;
-            Height=106*_settings.Current.Scale;
-            Scene.LayoutTransform=new ScaleTransform(_settings.Current.Scale,_settings.Current.Scale);
+            ApplyCharacterLayout(_settings.Current.Scale);
             PositionOnTaskbar();
             _dayNight.RefreshSetting(_settings.Current.AutoDayNight);
             _weather.SetInterval(_settings.Current.WeatherRefreshMinutes);
@@ -333,5 +555,5 @@ public partial class MainWindow : Window, IDisposable
     protected override void OnClosing(CancelEventArgs e){if(!_allowExit){e.Cancel=true;Hide();}else base.OnClosing(e);}
     private bool _allowExit;
     private void ExitApp(){_allowExit=true;_settings.Save();System.Windows.Application.Current.Shutdown();}
-    public void Dispose(){if(_disposed)return;_disposed=true;_allowExit=true;IsVisibleChanged-=OnAnimationVisibilityChanged;StateChanged-=OnAnimationWindowStateChanged;_timer.Stop();_feedbackTimer.Stop();_music.TrackChanged-=OnTrackChanged;_music.PlaybackChanged-=OnPlaybackChanged;_music.LibraryChanged-=OnMusicLibraryChanged;_weatherEffects.LightningFlashed-=OnLightningFlashed;_ambience.Dispose();_weatherEffects.Dispose();_weather.WeatherChanged-=OnWeatherChanged;_weather.Dispose();_dayNight.TransitionUpdated-=OnDayNightTransition;_dayNight.Dispose();_time.Updated-=UpdateClock;_time.Dispose();_input.KeyboardActivity-=OnKeyboard;_input.MouseActivity-=OnMouse;_input.Dispose();_tray.Visible=false;_tray.Dispose();_music.Dispose();LoggerService.Info("DeskLofi shutdown.");}
+    public void Dispose(){if(_disposed)return;_disposed=true;_allowExit=true;IsVisibleChanged-=OnAnimationVisibilityChanged;StateChanged-=OnAnimationWindowStateChanged;_timer.Stop();_feedbackTimer.Stop();_music.TrackChanged-=OnTrackChanged;_music.PlaybackChanged-=OnPlaybackChanged;_music.LibraryChanged-=OnMusicLibraryChanged;_weatherEffects.LightningFlashed-=OnLightningFlashed;_ambience.Dispose();_weatherEffects.Dispose();_weather.WeatherChanged-=OnWeatherChanged;_weather.Dispose();_dayNight.TransitionUpdated-=OnDayNightTransition;_dayNight.Dispose();_time.Updated-=UpdateClock;_time.Dispose();_input.KeyboardActivity-=OnKeyboard;_input.MouseActivity-=OnMouse;_input.Dispose();_blink.Dispose();_tray.Visible=false;_tray.Dispose();_music.Dispose();LoggerService.Info("DeskLofi shutdown.");}
 }

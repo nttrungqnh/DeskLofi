@@ -65,10 +65,21 @@ Settings live in `Data/settings.json`. Rotating privacy-conscious logs go to `Lo
 
 Choose Tiếng Việt or English in Settings → General → Language. The choice is saved and used for the settings, music popup, playlist window, music library, and tray menu.
 
-## Girl character
+## Asset packs
 
-The app opens as a transparent 112×106 character window with the room demo hidden. Idle blink frames are in `Assets/Characters/Girl/Idle/`; Typing and TypingFast share four cached PNGs in `Assets/Characters/Girl/Typing/` at 6 and 10 FPS. The five separate Mouse PNGs are in `Assets/Characters/Girl/Mouse/` and play at 4 FPS in PingPong order. All animations use the same transparent 517×491 canvas. Mouse frames have a common 1.05× nearest-neighbor scale and bottom-right anchor so the character is close to Idle height; the original PNGs remain unchanged. The girl starts in Idle, blinks at randomized 3–7 second intervals, switches to Typing on keyboard activity, and switches to Mouse when mouse activity is newer than the 650 ms keyboard priority window. Mouse returns to Idle after 900 ms without mouse activity. Right-click the character for music controls and settings.
+Character packs live in `Assets/Characters`, Pet packs in `Assets/Pets`, and Room pack metadata in `Assets/Rooms`. The built-in packs are `Girl_Default`, `OrangeCat`, and `DefaultRoom`. Each subdirectory has a `pack.json` with `id`, `name`, and relative PNG paths. Character and Pet manifests use an `animations` object: `idle` is required; `typing`, `mouse`, `blink`, `coffee`, `stretch`, `tail`, and `sleep` are optional. Room manifests can list PNG paths under `layers`; room rendering still uses the current scene system.
 
-Edit `Data/girl-animations.json` to add new animations. Separate PNGs can use an ordered `Frames` list or `FolderPath`; `MultiFrameAnimationSource` decodes and freezes them once, then places them on the fixed canvas. `SourceScale` applies one nearest-neighbor scale to every frame in an animation; `HorizontalAnchor`, `VerticalAnchor`, `OffsetX`, and `OffsetY` align varying source sizes. `Mode: "PingPong"` reverses the frame index without duplicating decoded images. Event-driven blinking uses `Mode: "IdleWithRandomBlink"` and configurable blink delays and frame durations; its four frames are eyes open, half closed, closed, and open. Increase `CanvasWidth` and `CanvasHeight` if a later animation needs more space. Sprite sheets still support `AssetPath`, `FrameWidth`, `FrameHeight`, `StartX`, `StartY`, `FrameGap`, and `FrameCount`. The same animation controller can be configured for Cat later.
+For example, to add another Character, create `Assets/Characters/Boy_Default/pack.json` and its PNGs:
 
-Typing and mouse activity reuse the existing global input hooks and store only timestamps. `TypingIdleDelayMs` (1200), `MouseIdleDelayMs` (900), `MouseMoveThrottleMs` (100), `KeyboardPriorityWindowMs` (650), `FastTypingWindowMs` (2000), and `FastTypingThresholdPerSecond` (7) can be set in `Data/settings.json` in the output folder. In Debug builds, open the tray menu → **Animation debug** to play Idle/Typing/TypingFast/Mouse, trigger **Blink Now**, or preview 4, 5, 6, 7, 8, or 10 FPS. **Auto** returns to live activity and configured FPS. The panel is absent from Release builds.
+```json
+{
+  "id": "boy_default",
+  "name": "Boy",
+  "animations": {
+    "idle": ["MASTER.png"],
+    "typing": ["Typing/typing_01.png", "Typing/typing_02.png"]
+  }
+}
+```
+
+For another Pet, create `Assets/Pets/NewPet/pack.json` with `idle` and any available `tail` or `sleep` frame arrays. Set `ActiveCharacterPackId` or `ActivePetPackId` in `Data/settings.json` to the pack ID and restart. A missing selected pack falls back to the built-in pack. Invalid manifests or missing idle images are logged and skipped; unavailable optional animations are skipped without using another pack's artwork. Frames are decoded and cached once. The existing state machines keep all animation timing and input behavior in code.

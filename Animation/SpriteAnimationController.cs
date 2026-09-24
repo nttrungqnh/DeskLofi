@@ -22,10 +22,7 @@ public sealed class SpriteAnimationController
     private int _frameIndex;
     private int _pingPongDirection = 1;
     private bool _sceneActive = true;
-    private int _blinkStep;
-    private double _eventRemaining;
 
-    private static readonly Random Random = new();
 
     public string CurrentAnimation { get; private set; } = "";
     public int FrameIndex => _frameIndex;
@@ -34,7 +31,7 @@ public sealed class SpriteAnimationController
     public bool UsingFallback => _fallbackNames.Contains(CurrentAnimation);
     public double CurrentFps => _fpsOverride ?? (_definitions.TryGetValue(CurrentAnimation, out var definition) ? definition.Fps : 4);
     public AnimationMode CurrentMode => _definitions.TryGetValue(CurrentAnimation, out var definition) ? definition.Mode : AnimationMode.Loop;
-    public double? NextBlinkInSeconds => CurrentMode == AnimationMode.IdleWithRandomBlink && _blinkStep is 0 or 4 ? Math.Max(0, _eventRemaining) : null;
+    private SpriteAnimationDefinition? CurrentDefinition => _definitions.GetValueOrDefault(CurrentAnimation);
     public BitmapSource CurrentFrame => _frames.Length == 0 ? _fallback("Idle")[0] : _frames[_frameIndex];
 
     public SpriteAnimationController(SpriteAnimationCatalog catalog, Func<string, BitmapSource[]> fallback, string characterName = "Girl")
@@ -71,7 +68,6 @@ public sealed class SpriteAnimationController
         CurrentAnimation = name;
         _frames = next;
         if (!shared) { _frameIndex = 0; _elapsed = 0; _pingPongDirection = 1; }
-        ResetBlinkSchedule();
         IsPlaying = true;
     }
 
@@ -83,27 +79,13 @@ public sealed class SpriteAnimationController
     {
         if (_sceneActive == active) return;
         _sceneActive = active;
-        if (active && CurrentMode == AnimationMode.IdleWithRandomBlink)
-        {
-            _frameIndex = 0;
-            ResetBlinkSchedule();
-        }
-    }
-
-    public void BlinkNow()
-    {
-        if (CurrentMode != AnimationMode.IdleWithRandomBlink || _frames.Length < 4 || !_sceneActive) return;
-        _frameIndex = 1;
-        _blinkStep = 1;
-        var definition = CurrentDefinition!;
-        _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
+        if (active) _elapsed = 0;
     }
 
     public bool Advance(TimeSpan elapsed)
     {
         if (!IsPlaying || !_sceneActive || _frames.Length < 2) return false;
         var definition = CurrentDefinition;
-        if (definition?.Mode == AnimationMode.IdleWithRandomBlink) return _frames.Length < 4 ? false : AdvanceBlink(elapsed, definition);
         if (CurrentFps <= 0) return false;
         _elapsed += Math.Max(0, elapsed.TotalSeconds);
         var frameDuration = 1 / CurrentFps;
@@ -130,61 +112,6 @@ public sealed class SpriteAnimationController
         }
         _frameIndex = (_frameIndex + steps) % _frames.Length;
         return true;
-    }
-
-    private SpriteAnimationDefinition? CurrentDefinition => _definitions.GetValueOrDefault(CurrentAnimation);
-
-    private bool AdvanceBlink(TimeSpan elapsed, SpriteAnimationDefinition definition)
-    {
-        var remaining = Math.Max(0, elapsed.TotalSeconds);
-        var changed = false;
-        while (remaining >= _eventRemaining)
-        {
-            remaining -= _eventRemaining;
-            if (_blinkStep == 0)
-            {
-                _frameIndex = 1;
-                _blinkStep = 1;
-                _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
-            }
-            else if (_blinkStep < 3)
-            {
-                _frameIndex = ++_blinkStep;
-                _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
-            }
-            else if (_blinkStep == 3)
-            {
-                _frameIndex = 0;
-                _blinkStep = Random.NextDouble() < Math.Clamp(definition.DoubleBlinkChance, 0, 1) ? 4 : 0;
-                _eventRemaining = _blinkStep == 4
-                    ? NextDuration(definition.DoubleBlinkDelayMinMs, definition.DoubleBlinkDelayMaxMs) / 1000d
-                    : NextDuration(definition.BlinkDelayMinMs, definition.BlinkDelayMaxMs) / 1000d;
-            }
-            else
-            {
-                _frameIndex = 1;
-                _blinkStep = 1;
-                _eventRemaining = NextDuration(definition.BlinkFrameDurationMinMs, definition.BlinkFrameDurationMaxMs) / 1000d;
-            }
-            changed = true;
-        }
-        _eventRemaining -= remaining;
-        return changed;
-    }
-
-    private void ResetBlinkSchedule()
-    {
-        _blinkStep = 0;
-        _eventRemaining = CurrentDefinition?.Mode == AnimationMode.IdleWithRandomBlink
-            ? NextDuration(CurrentDefinition.BlinkDelayMinMs, CurrentDefinition.BlinkDelayMaxMs) / 1000d
-            : 0;
-    }
-
-    private static int NextDuration(int min, int max)
-    {
-        min = Math.Max(1, min);
-        max = Math.Max(min, max);
-        return Random.Next(min, max + 1);
     }
 
     private BitmapSource[] Load(SpriteAnimationDefinition definition)
@@ -223,7 +150,6 @@ public sealed class SpriteAnimationController
             }
             if (sources.Length == 0) throw new FileNotFoundException("No PNG frames found.");
             if (definition.FrameCount > 0 && definition.FrameCount != sources.Length) throw new InvalidDataException("Frame count does not match animation config.");
-            if (definition.Mode == AnimationMode.IdleWithRandomBlink && sources.Length < 4) throw new InvalidDataException("Idle blink animations require at least four frames.");
             cached = sources;
             _framesByAsset[key] = cached;
             LoggerService.Info($"Animation asset loaded: {definition.Name} ({cached.Length} frames)");

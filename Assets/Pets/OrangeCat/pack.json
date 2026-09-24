@@ -1,0 +1,9 @@
+{
+  "id": "orange_cat",
+  "name": "Orange Cat",
+  "animations": {
+    "idle": ["CAT_MASTER.png"],
+    "tail": ["Tail/cat_tail_01.png", "Tail/cat_tail_02.png", "Tail/cat_tail_03.png", "Tail/cat_tail_04.png"],
+    "sleep": ["Sleep/cat_sleep_01.png", "Sleep/cat_sleep_02.png", "Sleep/cat_sleep_03.png"]
+  }
+}

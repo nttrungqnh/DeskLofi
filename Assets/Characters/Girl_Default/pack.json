@@ -1,0 +1,12 @@
+{
+  "id": "girl_default",
+  "name": "DeskLofi Girl",
+  "animations": {
+    "idle": ["MASTER.png"],
+    "typing": ["Typing/typing_01.png", "Typing/typing_02.png", "Typing/typing_03.png", "Typing/typing_04.png"],
+    "mouse": ["Mouse/mouse_01.png", "Mouse/mouse_02.png", "Mouse/mouse_03.png", "Mouse/mouse_04.png"],
+    "blink": ["Blink/blink_half.png", "Blink/blink_close.png"],
+    "coffee": ["Coffee/coffee_01.png", "Coffee/coffee_02.png", "Coffee/coffee_03.png", "Coffee/coffee_04.png", "Coffee/coffee_05.png"],
+    "stretch": ["Stretch/stretch_01.png", "Stretch/stretch_02.png", "Stretch/stretch_03.png", "Stretch/stretch_04.png"]
+  }
+}

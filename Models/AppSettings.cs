@@ -1,20 +1,33 @@
 namespace DeskLofi.Models;
 public sealed class AppSettings
 {
+    public const int DefaultTypingIdleDelayMs = 700;
+    public const int DefaultCatSleepTimeoutSeconds = 120;
     public bool StartWithWindows { get; set; }
     public string Language { get; set; } = "vi";
     public bool AlwaysOnTop { get; set; } = true;
     public bool ShowOnTaskbar { get; set; }
     public bool ReactToKeyboard { get; set; } = true;
     public bool ReactToMouse { get; set; } = true;
-    public int TypingIdleDelayMs { get; set; } = 1200;
+    public int TypingIdleDelayMs { get; set; } = DefaultTypingIdleDelayMs;
     public int MouseIdleDelayMs { get; set; } = 900;
     public int MouseMoveThrottleMs { get; set; } = 100;
     public int KeyboardPriorityWindowMs { get; set; } = 650;
     public int FastTypingWindowMs { get; set; } = 2000;
     public double FastTypingThresholdPerSecond { get; set; } = 7;
+    public bool EnableBlink { get; set; } = true;
+    public int MinBlinkIntervalSeconds { get; set; } = 3;
+    public int MaxBlinkIntervalSeconds { get; set; } = 7;
     public bool AutoPlayMusic { get; set; }
-    public int CatSleepTimeoutSeconds { get; set; } = 45;
+    public string ActiveCharacterPackId { get; set; } = "girl_default";
+    public string ActivePetPackId { get; set; } = "orange_cat";
+    public int CatSleepTimeoutSeconds { get; set; } = DefaultCatSleepTimeoutSeconds;
+    public const double DefaultCatOffsetX = 100;
+    public const double DefaultCatOffsetY = 44;
+    public double CatOffsetX { get; set; } = DefaultCatOffsetX;
+    public double CatOffsetY { get; set; } = DefaultCatOffsetY;
+    public const double DefaultCatScale = 0.063;
+    public double CatScale { get; set; } = DefaultCatScale;
     public int AfkTimeoutMinutes { get; set; } = 5;
     public double Scale { get; set; } = 1;
     public double Volume { get; set; } = 0.35;

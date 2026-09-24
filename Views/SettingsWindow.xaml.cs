@@ -16,6 +16,8 @@ public partial class SettingsWindow : Window
 {
     private readonly SettingsService _service;
     private readonly MusicService? _music;
+    private bool _syncingSize;
+    public event Action<double>? CharacterScalePreviewChanged;
 
     public SettingsWindow(SettingsService service, MusicService? music = null)
     {
@@ -23,6 +25,8 @@ public partial class SettingsWindow : Window
         _service = service;
         _music = music;
         ApplySettings(service.Current);
+        CharacterSizeChoice.SelectionChanged += CharacterSizeChanged;
+        Scale.ValueChanged += CharacterScaleChanged;
         LanguageChoice.SelectionChanged += (_, _) => ApplyLanguage();
         Refresh.ValueChanged += (_, _) => UpdateRefreshValue();
         ApplyLanguage();
@@ -40,7 +44,9 @@ public partial class SettingsWindow : Window
         Autoplay.IsChecked = s.AutoPlayMusic;
         Sleep.Value = s.CatSleepTimeoutSeconds;
         Afk.Value = s.AfkTimeoutMinutes;
-        Scale.Value = s.Scale;
+        Scale.Value = Math.Clamp(s.Scale, Scale.Minimum, Scale.Maximum);
+        SyncSizePreset();
+        UpdateCharacterSizeLabel();
         ShowClock.IsChecked = s.ShowClock;
         ShowDate.IsChecked = s.ShowDate;
         AutoDayNight.IsChecked = s.AutoDayNight;
@@ -61,6 +67,39 @@ public partial class SettingsWindow : Window
         ApplyLanguage();
     }
 
+    private void CharacterSizeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_syncingSize || CharacterSizeChoice.SelectedItem is not WpfComboBoxItem item ||
+            !double.TryParse(item.Tag?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) return;
+        _syncingSize = true;
+        Scale.Value = value;
+        _syncingSize = false;
+        UpdateCharacterSizeLabel();
+        CharacterScalePreviewChanged?.Invoke(Scale.Value);
+    }
+
+    private void CharacterScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingSize) return;
+        SyncSizePreset();
+        UpdateCharacterSizeLabel();
+        CharacterScalePreviewChanged?.Invoke(Scale.Value);
+    }
+    private void SyncSizePreset()
+    {
+        _syncingSize = true;
+        CharacterSizeChoice.SelectedItem = CharacterSizeChoice.Items.OfType<WpfComboBoxItem>().FirstOrDefault(item =>
+            double.TryParse(item.Tag?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && Math.Abs(value - Scale.Value) < 0.001);
+        _syncingSize = false;
+    }
+
+    private void UpdateCharacterSizeLabel()
+    {
+        var language = (LanguageChoice.SelectedItem as WpfComboBoxItem)?.Tag?.ToString();
+        CharacterSizeLabel.Text = UiText.Choose(language,
+            $"Khung nhân vật: {112 * Scale.Value:0} × {106 * Scale.Value:0}",
+            $"Character window: {112 * Scale.Value:0} × {106 * Scale.Value:0}");
+    }
     private void ApplyLanguage()
     {
         if (LanguageChoice.SelectedItem is not WpfComboBoxItem item) return;

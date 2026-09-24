@@ -6,6 +6,7 @@ public static class LoggerService
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "Logs", "desklifi.log");
     private const long MaxBytes = 1024 * 1024;
     public static void Info(string message) => Write("INFO", message);
+    public static void Warn(string message) => Write("WARN", message);
     public static void Error(string message, Exception? exception = null) => Write("ERROR", exception is null ? message : $"{message}: {exception.GetType().Name}: {exception.Message}");
     private static void Write(string level, string message)
     {
