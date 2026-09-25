@@ -15,6 +15,9 @@ using MediaColor = System.Windows.Media.Color;
 namespace DeskLofi.Views;
 public partial class MainWindow : Window, IDisposable
 {
+    private readonly Forms.ToolStripMenuItem _topmostTrayItem;
+    private readonly Forms.ToolStripMenuItem _settingsTrayItem;
+    private readonly Forms.ToolStripMenuItem _exitTrayItem;
     private const double GirlSceneWidth = 112, GirlSceneHeight = 106;
     private enum GirlAnimationPhase { Idle, Typing, MouseEntering, MouseActive, MouseLeaving, IdleSpecialEntering, IdleSpecialHolding, IdleSpecialLeaving }
     private const double CoffeeFrameSeconds = .16, CoffeeHoldSeconds = .7, StretchFrameSeconds = .18, StretchHoldSeconds = .8;
@@ -61,7 +64,7 @@ public partial class MainWindow : Window, IDisposable
         _states.StateChanged += _ => UpdateGirlAnimation();
         _music=new(settings); _ambience=new(settings.Current.WeatherVolume);ShuffleButton.Opacity=_music.Shuffle?1:.55;RepeatButton.Opacity=_music.Repeat?1:.55;PopulatePlaylists();_music.TrackChanged+=OnTrackChanged;_music.PlaybackChanged+=OnPlaybackChanged;_music.LibraryChanged+=OnMusicLibraryChanged;
         _timer=new(){Interval=TimeSpan.FromMilliseconds(25)};_timer.Tick+=(_,_)=>{var now=Stopwatch.GetTimestamp();var elapsed=Stopwatch.GetElapsedTime(_lastAnimationTick,now);_blink.Advance(elapsed);_lastAnimationTick=now;AdvanceGirlAnimation(elapsed);_catStates.Advance(elapsed);if(++_ticks%4==0){_states.Tick();UpdateBlinkEligibility();}if(_ticks%40==0)UpdateProgress();Render();};_timer.Start();
-        _tray=new Forms.NotifyIcon{Text="DeskLofi",Icon=System.Drawing.SystemIcons.Application,Visible=true};_tray.ContextMenuStrip=new Forms.ContextMenuStrip();_tray.ContextMenuStrip.Items.Add("Show DeskLofi",null,(_,_)=>Show());_tray.ContextMenuStrip.Items.Add("Play / Pause",null,(_,_)=>ToggleMusic());_tray.ContextMenuStrip.Items.Add("Next Track",null,(_,_)=>_music.Next());_tray.ContextMenuStrip.Items.Add("Settings",null,(_,_)=>OpenSettings());_tray.ContextMenuStrip.Items.Add("Exit",null,(_,_)=>ExitApp());_tray.DoubleClick+=(_,_)=>Show();
+        _tray=new Forms.NotifyIcon{Text="DeskLofi",Icon=System.Drawing.SystemIcons.Application,Visible=true};_tray.ContextMenuStrip=new Forms.ContextMenuStrip();_tray.ContextMenuStrip.Items.Add("Show DeskLofi",null,(_,_)=>Show());_tray.ContextMenuStrip.Items.Add("Play / Pause",null,(_,_)=>ToggleMusic());_tray.ContextMenuStrip.Items.Add("Next Track",null,(_,_)=>_music.Next());_topmostTrayItem=new Forms.ToolStripMenuItem { CheckOnClick=true, Checked=settings.Current.AlwaysOnTop };_topmostTrayItem.Click+=(_,_)=>{_settings.Current.AlwaysOnTop=_topmostTrayItem.Checked;_settings.Save();ApplyWindowLayering();};_tray.ContextMenuStrip.Items.Add(_topmostTrayItem);_settingsTrayItem=new Forms.ToolStripMenuItem("Settings",null,(_,_)=>OpenSettings());_tray.ContextMenuStrip.Items.Add(_settingsTrayItem);_exitTrayItem=new Forms.ToolStripMenuItem("Exit",null,(_,_)=>ExitApp());_tray.ContextMenuStrip.Items.Add(_exitTrayItem);_tray.DoubleClick+=(_,_)=>Show();
         ApplyLanguage();
         Topmost=settings.Current.AlwaysOnTop;ShowInTaskbar=settings.Current.ShowOnTaskbar;
 #if DEBUG
@@ -87,9 +90,10 @@ public partial class MainWindow : Window, IDisposable
             trayItems[0].Text=T("Hiện DeskLofi","Show DeskLofi");
             trayItems[1].Text=T("Phát / Tạm dừng","Play / Pause");
             trayItems[2].Text=T("Bài tiếp","Next Track");
-            trayItems[3].Text=T("Cài đặt","Settings");
-            trayItems[4].Text=T("Thoát","Exit");
         }
+        _topmostTrayItem.Text=T("Hiển thị trên các ứng dụng khác","Show over other apps");
+        _settingsTrayItem.Text=T("Cài đặt","Settings");
+        _exitTrayItem.Text=T("Thoát","Exit");
         PopulatePlaylists();
         UpdateTrack();
     }
@@ -109,6 +113,7 @@ public partial class MainWindow : Window, IDisposable
     }
     private void ApplyWindowLayering()
     {
+        _topmostTrayItem.Checked=_settings.Current.AlwaysOnTop;
         Topmost=_settings.Current.AlwaysOnTop;
         var hwnd=new WindowInteropHelper(this).Handle;
         if(hwnd==IntPtr.Zero)return;
