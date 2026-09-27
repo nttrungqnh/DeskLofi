@@ -845,15 +845,35 @@ internal static class Program
             var input=(InputMonitor)typeof(DeskLofi.Views.MainWindow).GetField("_input",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var images=(GirlImageCache)typeof(DeskLofi.Views.MainWindow).GetField("_girlImages",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var blink=(BlinkController)typeof(DeskLofi.Views.MainWindow).GetField("_blink",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
-            var demoBack=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("RoomDemoBack",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
-            var demoFront=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("RoomDemoFront",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var demoBack=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("RoomLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var demoFront=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("ForegroundLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var girlContainer=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("GirlLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var catLayer=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("CatLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var deskLayer=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("DeskSceneLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var foregroundLayer=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("ForegroundLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var catImage=(CatImageCache)typeof(DeskLofi.Views.MainWindow).GetField("_catImages",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             var catSprite=(System.Windows.Controls.Image)typeof(DeskLofi.Views.MainWindow).GetField("CatSprite",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
-            var scene=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("Scene",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
-            Assert(images.Master.IsFrozen && blink.Frame == BlinkFrame.Open,"app starts with frozen MASTER and open blink state");Assert(demoBack.Visibility==System.Windows.Visibility.Collapsed&&demoFront.Visibility==System.Windows.Visibility.Collapsed,"demo room is hidden on startup");
-            Assert(ReferenceEquals(girlContainer.Parent,scene)&&ReferenceEquals(catLayer.Parent,scene)&&scene.Width>112&&ReferenceEquals(catSprite.Source,catImage.Master),"Girl and Cat use separate visible scene layers with CAT_MASTER");
+            var scene=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("SceneRoot",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            Assert(images.Master.IsFrozen && blink.Frame == BlinkFrame.Open,"app starts with frozen MASTER and open blink state");Assert(demoBack.Visibility==System.Windows.Visibility.Visible&&demoFront.Visibility==System.Windows.Visibility.Visible,"default room layers are visible on startup");
+            Assert(ReferenceEquals(girlContainer.Parent,scene)&&ReferenceEquals(catLayer.Parent,scene)&&scene.Width==350&&scene.Height==150&&ReferenceEquals(catSprite.Source,catImage.Master),"350x150 scene keeps Girl and Cat on separate layers with CAT_MASTER");
+            Assert(scene.Children.IndexOf(deskLayer)<scene.Children.IndexOf(girlContainer)&&scene.Children.IndexOf(deskLayer)<scene.Children.IndexOf(catLayer)&&scene.Children.IndexOf(foregroundLayer)>scene.Children.IndexOf(catLayer),"desk is behind both characters and foreground artwork is above them");
+            var clockText=(System.Windows.Controls.TextBlock)typeof(DeskLofi.Views.MainWindow).GetField("ClockText",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var cityText=(System.Windows.Controls.TextBlock)typeof(DeskLofi.Views.MainWindow).GetField("CityText",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            typeof(DeskLofi.Views.MainWindow).GetMethod("UpdateClock",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(host,null);
+            typeof(DeskLofi.Views.MainWindow).GetMethod("ApplySceneDefinition",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(host,null);
+            foreach(var layerName in new[]{"BaseBackgroundLayer","RoomWindowLayer","DeskLayer","RoomForegroundLayer"})
+            {
+                var image=(System.Windows.Controls.Image)typeof(DeskLofi.Views.MainWindow).GetField(layerName,BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+                Assert(image.Source is System.Windows.Media.Imaging.BitmapSource,$"room asset slot {layerName} loads and caches a PNG");
+                if(layerName!="BaseBackgroundLayer")
+                {
+                    var bitmap=new System.Windows.Media.Imaging.FormatConvertedBitmap((System.Windows.Media.Imaging.BitmapSource)image.Source!,System.Windows.Media.PixelFormats.Bgra32,null,0);
+                    var pixel=new byte[4];bitmap.CopyPixels(new System.Windows.Int32Rect(0,0,1,1),pixel,4,0);
+                    Assert(pixel[3]==0,$"empty room slot {layerName} stays transparent over character layers");
+                }
+            }
+            var settings=(SettingsService)typeof(DeskLofi.Views.MainWindow).GetField("_settings",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            Assert(clockText.Text==DateTime.Now.ToString("HH:mm")&&cityText.Text==settings.Current.CityName,"scene clock uses Windows time and configured city");
             typeof(DeskLofi.Views.MainWindow).GetMethod("PositionOnTaskbar",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(host,null);
             var workArea=System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea;
             if(workArea!=null){var dpiScale=System.Windows.PresentationSource.FromVisual(host)?.CompositionTarget?.TransformFromDevice.M11??1;Assert(Math.Abs(host.Top-(workArea.Value.Bottom*dpiScale-host.Height))<.1,"startup places the girl on the taskbar edge");}

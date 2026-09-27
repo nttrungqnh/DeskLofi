@@ -22,8 +22,8 @@ public sealed class AppSettings
     public string ActiveCharacterPackId { get; set; } = "girl_default";
     public string ActivePetPackId { get; set; } = "orange_cat";
     public int CatSleepTimeoutSeconds { get; set; } = DefaultCatSleepTimeoutSeconds;
-    public const double DefaultCatOffsetX = 100;
-    public const double DefaultCatOffsetY = 44;
+    public const double DefaultCatOffsetX = 225;
+    public const double DefaultCatOffsetY = 82;
     public double CatOffsetX { get; set; } = DefaultCatOffsetX;
     public double CatOffsetY { get; set; } = DefaultCatOffsetY;
     public const double DefaultCatScale = 0.063;
@@ -32,6 +32,9 @@ public sealed class AppSettings
     public double Scale { get; set; } = 1;
     public double Volume { get; set; } = 0.35;
     public string Scene { get; set; } = "Bedroom";
+    public string ActiveRoomPackId { get; set; } = "default_room";
+    public double GirlOffsetX { get; set; } = 83;
+    public double GirlOffsetY { get; set; } = 38;
     public double Left { get; set; } = -1;
     public double TaskbarOffsetX { get; set; } = 93;
     public double Top { get; set; } = -1;
@@ -39,7 +42,7 @@ public sealed class AppSettings
     public bool ShowDate { get; set; }
     public bool AutoDayNight { get; set; } = true;
     public bool EnableRealWeather { get; set; }
-    public string CityName { get; set; } = "";
+    public string CityName { get; set; } = "Hạ Long";
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int WeatherRefreshMinutes { get; set; } = 15;

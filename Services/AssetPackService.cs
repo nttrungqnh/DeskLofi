@@ -16,6 +16,7 @@ public sealed class AssetPackService
 
     private readonly CharacterPack? _activeCharacter;
     private readonly PetPack? _activePet;
+    private readonly RoomPack? _activeRoom;
 
     public AssetPackService(AppSettings settings, string? assetRoot = null)
     {
@@ -25,6 +26,7 @@ public sealed class AssetPackService
         Discover(Path.Combine(root, "Rooms"), _rooms);
         _activeCharacter = ChooseActive(_characters, settings.ActiveCharacterPackId, "girl_default", "Character");
         _activePet = ChooseActive(_pets, settings.ActivePetPackId, "orange_cat", "Pet");
+        _activeRoom = ChooseActive(_rooms, settings.ActiveRoomPackId, "default_room", "Room");
     }
 
     public IReadOnlyList<CharacterPack> GetCharacterPacks() => _characters.Values.ToArray();
@@ -32,6 +34,21 @@ public sealed class AssetPackService
     public IReadOnlyList<RoomPack> GetRoomPacks() => _rooms.Values.ToArray();
     public CharacterPack? GetActiveCharacter() => _activeCharacter;
     public PetPack? GetActivePet() => _activePet;
+    public RoomPack? GetActiveRoom() => _activeRoom;
+    public BitmapSource? GetRoomLayer(string name)
+    {
+        if (_activeRoom is null || !_activeRoom.Layers.TryGetValue(name, out var relativePath)) return null;
+        var path = ResolveFramePath(_activeRoom, relativePath);
+        if (path is null) return null;
+        if (_images.TryGetValue(path, out var cached)) return cached;
+        try
+        {
+            var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.UriSource = new Uri(path);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.EndInit(); bitmap.Freeze();
+            return _images[path] = bitmap;
+        }
+        catch (Exception error) { LoggerService.Warn($"Skipping room layer '{name}' from pack '{_activeRoom.Id}': {error.Message}"); return null; }
+    }
     public BitmapSource[] GetCharacterAnimation(string name) => GetAnimation(_activeCharacter, name);
     public BitmapSource[] GetPetAnimation(string name) => GetAnimation(_activePet, name);
 

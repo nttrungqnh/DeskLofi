@@ -1,5 +1,10 @@
 {
   "id": "default_room",
   "name": "Default Room",
-  "layers": {}
+  "layers": {
+    "base": "base.png",
+    "window": "window.png",
+    "desk": "desk.png",
+    "foreground": "foreground.png"
+  }
 }

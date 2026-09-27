@@ -8,6 +8,8 @@ public sealed class SettingsService
     private const double PreviousDefaultCatScale = 0.07;
     private const double PreviousDefaultCatOffsetX = 112;
     private const double PreviousDefaultCatOffsetY = 32;
+    private const double LegacyDefaultCatOffsetX = 100;
+    private const double LegacyDefaultCatOffsetY = 44;
     private const int PreviousDefaultCatSleepTimeoutSeconds = 45;
     private readonly string _path = Path.Combine(AppContext.BaseDirectory, "Data", "settings.json");
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
@@ -24,8 +26,11 @@ public sealed class SettingsService
                 settings.TypingIdleDelayMs = AppSettings.DefaultTypingIdleDelayMs;
             if (Math.Abs(settings.CatScale - PreviousDefaultCatScale) < 0.000001)
                 settings.CatScale = AppSettings.DefaultCatScale;
-            if (Math.Abs(settings.CatOffsetX - PreviousDefaultCatOffsetX) < 0.000001 &&
-                Math.Abs(settings.CatOffsetY - PreviousDefaultCatOffsetY) < 0.000001)
+            var previousCatPosition = Math.Abs(settings.CatOffsetX - PreviousDefaultCatOffsetX) < 0.000001 &&
+                Math.Abs(settings.CatOffsetY - PreviousDefaultCatOffsetY) < 0.000001;
+            var legacyCatPosition = Math.Abs(settings.CatOffsetX - LegacyDefaultCatOffsetX) < 0.000001 &&
+                Math.Abs(settings.CatOffsetY - LegacyDefaultCatOffsetY) < 0.000001;
+            if (previousCatPosition || legacyCatPosition)
             {
                 settings.CatOffsetX = AppSettings.DefaultCatOffsetX;
                 settings.CatOffsetY = AppSettings.DefaultCatOffsetY;

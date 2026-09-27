@@ -6,7 +6,7 @@ namespace DeskLofi.Services;
 /// <summary>Composes one stable room with a short crossfade between period layers.</summary>
 public sealed class DayNightService : IDisposable
 {
-    private readonly TimeService _time;
+    private readonly ClockService _time;
     private readonly DispatcherTimer _transition = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private DateTime _transitionStart;
     private TimePeriod _from, _to;
@@ -17,7 +17,7 @@ public sealed class DayNightService : IDisposable
     public TimeSpan TransitionDuration { get; set; } = TimeSpan.FromSeconds(3);
     public event Action<TimePeriod, TimePeriod, double>? TransitionUpdated;
 
-    public DayNightService(TimeService time, bool autoDayNight)
+    public DayNightService(ClockService time, bool autoDayNight)
     {
         _time = time;
         CurrentPeriod = time.CurrentPeriod;

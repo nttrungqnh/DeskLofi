@@ -18,10 +18,10 @@ public partial class MainWindow : Window, IDisposable
     private readonly Forms.ToolStripMenuItem _topmostTrayItem;
     private readonly Forms.ToolStripMenuItem _settingsTrayItem;
     private readonly Forms.ToolStripMenuItem _exitTrayItem;
-    private const double GirlSceneWidth = 112, GirlSceneHeight = 106;
+    private const double GirlSceneWidth = 350, GirlSceneHeight = 150;
     private enum GirlAnimationPhase { Idle, Typing, MouseEntering, MouseActive, MouseLeaving, IdleSpecialEntering, IdleSpecialHolding, IdleSpecialLeaving }
     private const double CoffeeFrameSeconds = .16, CoffeeHoldSeconds = .7, StretchFrameSeconds = .18, StretchHoldSeconds = .8;
-    private readonly SettingsService _settings; private readonly TimeService _time=new(); private readonly DayNightService _dayNight; private readonly SceneDefinition _sceneDefinition; private readonly SceneDefinitionService _sceneDefinitions=new(); private readonly WeatherService _weather; private readonly WeatherEffectController _weatherEffects; private readonly AmbienceService _ambience; private readonly ActivityTracker _activity=new(); private readonly InputMonitor _input; private readonly CompanionStateManager _states; private readonly SpriteLoader _sprites=new(); private readonly AssetPackService _packs; private readonly GirlImageCache _girlImages; private readonly CatImageCache _catImages; private readonly CatStateMachine _catStates; private readonly BlinkController _blink; private readonly MusicService _music; private readonly DispatcherTimer _timer; private readonly Forms.NotifyIcon _tray; private long _lastAnimationTick=Stopwatch.GetTimestamp(); private int _ticks; private int _typingFrameIndex; private double _typingFrameElapsed; private bool _typingActive; private GirlAnimationPhase _girlAnimationPhase=GirlAnimationPhase.Idle; private int _mouseFrameIndex; private double _mouseFrameElapsed; private bool _typingAfterMouseLeave; private bool _typingAfterMouseMaster; private bool _isSeeking,_disposed; private bool _debugBlinkPreview = false; private TimePeriod? _assetFrom,_assetTo; private DateTime _lastMoveSave=DateTime.MinValue;
+    private readonly SettingsService _settings; private readonly ClockService _time=new(); private readonly DayNightService _dayNight; private readonly SceneDefinition _sceneDefinition; private readonly SceneDefinitionService _sceneDefinitions=new(); private readonly WeatherService _weather; private readonly WeatherEffectController _weatherEffects; private readonly AmbienceService _ambience; private readonly ActivityTracker _activity=new(); private readonly InputMonitor _input; private readonly CompanionStateManager _states; private readonly SpriteLoader _sprites=new(); private readonly AssetPackService _packs; private readonly GirlImageCache _girlImages; private readonly CatImageCache _catImages; private readonly CatStateMachine _catStates; private readonly BlinkController _blink; private readonly MusicService _music; private readonly DispatcherTimer _timer; private readonly Forms.NotifyIcon _tray; private long _lastAnimationTick=Stopwatch.GetTimestamp(); private int _ticks; private int _typingFrameIndex; private double _typingFrameElapsed; private bool _typingActive; private GirlAnimationPhase _girlAnimationPhase=GirlAnimationPhase.Idle; private int _mouseFrameIndex; private double _mouseFrameElapsed; private bool _typingAfterMouseLeave; private bool _typingAfterMouseMaster; private bool _isSeeking,_disposed; private bool _debugBlinkPreview = false; private TimePeriod? _assetFrom,_assetTo; private DateTime _lastMoveSave=DateTime.MinValue;
     private GirlAction _activeIdleSpecial = GirlAction.None; private int _idleSpecialFrameIndex; private double _idleSpecialFrameElapsed;
 #if DEBUG
     private System.Windows.Controls.Primitives.Popup? _animationDebugPopup;
@@ -31,6 +31,7 @@ public partial class MainWindow : Window, IDisposable
     public MainWindow(SettingsService settings, Func<GirlState>? chooseIdleSpecial = null)
     {
         InitializeComponent();
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         IsVisibleChanged += OnAnimationVisibilityChanged;
         StateChanged += OnAnimationWindowStateChanged;
         _settings = settings;
@@ -136,6 +137,11 @@ public partial class MainWindow : Window, IDisposable
             : _settings.Current.Left>=0?_settings.Current.Left:(minLeft+wa.Value.Width*scale/2-Width/2);
         Left=Math.Clamp(desiredLeft,minLeft,maxLeft);
         Top=wa.Value.Bottom*scale-Height;
+    }
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        Dispatcher.BeginInvoke(PositionOnTaskbar, DispatcherPriority.ApplicationIdle);
     }
     private void OnKeyboard(DateTime at)=>Dispatcher.BeginInvoke(()=>{_activity.Keyboard(at);_catStates.NotifyActivity(true,at);_blink.SetCanBlink(false);_states.Tick();UpdateBlinkEligibility();Render();},DispatcherPriority.Input);
     private void OnMouse(DateTime at)=>Dispatcher.BeginInvoke(()=>{_activity.Mouse(at);_catStates.NotifyActivity(false,at);_blink.SetCanBlink(false);_states.Tick();UpdateBlinkEligibility();Render();},DispatcherPriority.Input);
@@ -390,24 +396,28 @@ public partial class MainWindow : Window, IDisposable
 #endif
     private void OnDayNightTransition(TimePeriod from,TimePeriod to,double amount)=>UpdateDayNight(from,to,amount);
     private void UpdateDayNight(TimePeriod from,TimePeriod to,double amount){SkyLayer.Fill=BlendLayerColor(_sceneDefinition.SkyColors,from,to,amount,"#FF25365D");LightingLayer.Fill=BlendLayerColor(_sceneDefinition.LightingColors,from,to,amount,"#00000000");LampGlow.Opacity=LampAmount(from)+(LampAmount(to)-LampAmount(from))*amount;if(_assetFrom!=from||_assetTo!=to){_assetFrom=from;_assetTo=to;SkyImageFrom.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.SkyAssets.GetValueOrDefault(from.ToString()));SkyImageTo.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.SkyAssets.GetValueOrDefault(to.ToString()));LightingImageFrom.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.LightingAssets.GetValueOrDefault(from.ToString()));LightingImageTo.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.LightingAssets.GetValueOrDefault(to.ToString()));}SkyImageFrom.Opacity=SkyImageFrom.Source is null?0:1-amount;SkyImageTo.Opacity=SkyImageTo.Source is null?0:amount;LightingImageFrom.Opacity=LightingImageFrom.Source is null?0:1-amount;LightingImageTo.Opacity=LightingImageTo.Source is null?0:amount;}
-    private void ApplySceneDefinition(){var w=_sceneDefinition.WindowBounds;Canvas.SetLeft(SkyLayer,w.X);Canvas.SetTop(SkyLayer,w.Y);SkyLayer.Width=w.Width;SkyLayer.Height=w.Height;foreach(var image in new[]{SkyImageFrom,SkyImageTo}){Canvas.SetLeft(image,w.X);Canvas.SetTop(image,w.Y);image.Width=w.Width;image.Height=w.Height;}Canvas.SetLeft(WeatherLayer,w.X);Canvas.SetTop(WeatherLayer,w.Y);Canvas.SetLeft(LightningLayer,w.X);Canvas.SetTop(LightningLayer,w.Y);LightningLayer.Width=w.Width;LightningLayer.Height=w.Height;Canvas.SetLeft(WindowFrame,w.X-3);Canvas.SetTop(WindowFrame,w.Y-3);WindowFrame.Width=w.Width+6;WindowFrame.Height=w.Height+6;Canvas.SetLeft(ClockObject,_sceneDefinition.ClockPosition.X);Canvas.SetTop(ClockObject,_sceneDefinition.ClockPosition.Y);_weatherEffects.SetViewport(w.Width,w.Height);BaseBackgroundLayer.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.BaseBackground);BaseBackgroundLayer.Visibility=BaseBackgroundLayer.Source is null?Visibility.Collapsed:Visibility.Visible;}
+    private void ApplySceneDefinition(){var w=_sceneDefinition.WindowBounds;Canvas.SetLeft(SkyLayer,w.X);Canvas.SetTop(SkyLayer,w.Y);SkyLayer.Width=w.Width;SkyLayer.Height=w.Height;foreach(var image in new[]{SkyImageFrom,SkyImageTo}){Canvas.SetLeft(image,w.X);Canvas.SetTop(image,w.Y);image.Width=w.Width;image.Height=w.Height;}Canvas.SetLeft(RoomWindowLayer,w.X-4);Canvas.SetTop(RoomWindowLayer,w.Y-4);RoomWindowLayer.Width=w.Width+8;RoomWindowLayer.Height=w.Height+8;Canvas.SetLeft(WeatherLayer,w.X);Canvas.SetTop(WeatherLayer,w.Y);WeatherLayer.Width=w.Width;WeatherLayer.Height=w.Height;Canvas.SetLeft(LightningLayer,w.X);Canvas.SetTop(LightningLayer,w.Y);LightningLayer.Width=w.Width;LightningLayer.Height=w.Height;Canvas.SetLeft(WindowLayer,w.X-4);Canvas.SetTop(WindowLayer,w.Y-4);WindowLayer.Width=w.Width+8;WindowLayer.Height=w.Height+8;Canvas.SetLeft(ClockObject,_sceneDefinition.ClockPosition.X);Canvas.SetTop(ClockObject,_sceneDefinition.ClockPosition.Y);_weatherEffects.SetViewport(w.Width,w.Height);BaseBackgroundLayer.Source=_packs.GetRoomLayer("base") ?? SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.BaseBackground);RoomWindowLayer.Source=_packs.GetRoomLayer("window");DeskLayer.Source=_packs.GetRoomLayer("desk");RoomForegroundLayer.Source=_packs.GetRoomLayer("foreground");}
     private void ApplyCharacterLayout(double scale)
     {
         scale = Math.Clamp(scale, 0.75, 2.0);
         var catScale = double.IsFinite(_settings.Current.CatScale) ? Math.Clamp(_settings.Current.CatScale, 0.02, 0.2) : AppSettings.DefaultCatScale;
         var catX = double.IsFinite(_settings.Current.CatOffsetX) ? _settings.Current.CatOffsetX : AppSettings.DefaultCatOffsetX;
         var catY = double.IsFinite(_settings.Current.CatOffsetY) ? _settings.Current.CatOffsetY : AppSettings.DefaultCatOffsetY;
+        var girlX = double.IsFinite(_settings.Current.GirlOffsetX) ? _settings.Current.GirlOffsetX : 83;
+        var girlY = double.IsFinite(_settings.Current.GirlOffsetY) ? _settings.Current.GirlOffsetY : 38;
+        Canvas.SetLeft(GirlLayer, girlX);
+        Canvas.SetTop(GirlLayer, girlY);
         CatSprite.Width = _catImages.Master.PixelWidth * catScale;
         CatSprite.Height = _catImages.Master.PixelHeight * catScale;
         Canvas.SetLeft(CatSprite, catX);
         Canvas.SetTop(CatSprite, catY);
-        Scene.Width = Math.Max(GirlSceneWidth, catX + CatSprite.Width);
-        Scene.Height = Math.Max(GirlSceneHeight, catY + CatSprite.Height);
-        CatLayer.Width = Scene.Width;
-        CatLayer.Height = Scene.Height;
-        Width = Scene.Width * scale;
-        Height = Scene.Height * scale;
-        Scene.LayoutTransform = new ScaleTransform(scale, scale);
+        SceneRoot.Width = GirlSceneWidth;
+        SceneRoot.Height = GirlSceneHeight;
+        CatLayer.Width = SceneRoot.Width;
+        CatLayer.Height = SceneRoot.Height;
+        Width = SceneRoot.Width * scale;
+        Height = SceneRoot.Height * scale;
+        SceneRoot.LayoutTransform = new ScaleTransform(scale, scale);
     }
     private static double LampAmount(TimePeriod p)=>p is TimePeriod.Evening or TimePeriod.Night?0.85:0;
     private static System.Windows.Media.Brush BlendLayerColor(Dictionary<string,string> colors,TimePeriod from,TimePeriod to,double amount,string fallback){try{var ca=(MediaColor)System.Windows.Media.ColorConverter.ConvertFromString(colors.GetValueOrDefault(from.ToString(),fallback));var cb=(MediaColor)System.Windows.Media.ColorConverter.ConvertFromString(colors.GetValueOrDefault(to.ToString(),fallback));return new SolidColorBrush(MediaColor.FromArgb((byte)(ca.A+(cb.A-ca.A)*amount),(byte)(ca.R+(cb.R-ca.R)*amount),(byte)(ca.G+(cb.G-ca.G)*amount),(byte)(ca.B+(cb.B-ca.B)*amount)));}catch{return System.Windows.Media.Brushes.Transparent;}}
@@ -415,14 +425,14 @@ public partial class MainWindow : Window, IDisposable
 #if DEBUG
         if(_settings.Current.DebugMode&&Enum.TryParse<TimePeriod>(_settings.Current.DebugTime,true,out var debugPeriod))display=display.Date.AddHours(debugPeriod switch{TimePeriod.Morning=>6,TimePeriod.Day=>12,TimePeriod.Evening=>18,_=>23}).AddMinutes(30);
 #endif
-        ClockText.Text=display.ToString("HH:mm");DateText.Text=DateOnly.FromDateTime(display).ToString("dd/MM");ClockPanel.Visibility=_settings.Current.ShowClock?Visibility.Visible:Visibility.Collapsed;DateText.Visibility=_settings.Current.ShowDate?Visibility.Visible:Visibility.Collapsed;}
+        ClockText.Text=display.ToString("HH:mm");DateText.Text=DateOnly.FromDateTime(display).ToString("dd/MM");CityText.Text=_settings.Current.CityName?.Trim()??"";CityText.Visibility=string.IsNullOrWhiteSpace(CityText.Text)?Visibility.Collapsed:Visibility.Visible;ClockPanel.Visibility=_settings.Current.ShowClock?Visibility.Visible:Visibility.Collapsed;DateText.Visibility=_settings.Current.ShowDate?Visibility.Visible:Visibility.Collapsed;}
     private void OnWeatherChanged(WeatherInfo info){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(()=>OnWeatherChanged(info));return;}ApplyWeatherVisual(info);}
     private void ApplyWeatherVisual(WeatherInfo info){var state=info.State;
         if(_settings.Current.DebugMode){if(Enum.TryParse<TimePeriod>(_settings.Current.DebugTime,true,out var p))_dayNight.SetDebugPeriod(p);if(Enum.TryParse<WeatherState>(_settings.Current.DebugWeather,true,out var w))state=w;}else _dayNight.SetDebugPeriod(null);
         _weatherEffects.Apply(state,_settings.Current.WeatherEffects,_settings.Current.EnableLightning);
         _ambience.Apply(state,_settings.Current.WeatherAmbienceAuto);
         var icon=state switch{WeatherState.Clear=>"SUN",WeatherState.PartlyCloudy=>"P.CL",WeatherState.Cloudy=>"CLD",WeatherState.Fog=>"FOG",WeatherState.Drizzle=>"DRZ",WeatherState.Rain=>"RAIN",WeatherState.HeavyRain=>"H.RN",WeatherState.Thunderstorm=>"THN",WeatherState.Snow=>"SNOW",_=>"--"};
-        WeatherText.Text=info.Temperature is { } t?$"{icon} {t:0}°":icon;WeatherText.ToolTip=$"{T("Thời tiết từ Open-Meteo","Weather by Open-Meteo")} · {_weather.CityName} · {state} · {info.Temperature:0.#}°C · {T("Cập nhật","Updated")} {info.LastUpdated?.ToString("HH:mm")??T("chưa có","never")}";
+        WeatherText.Text=info.Temperature is { } t?$"{icon} {t:0}°":icon;WeatherText.Visibility=_settings.Current.EnableRealWeather?Visibility.Visible:Visibility.Collapsed;WeatherText.ToolTip=$"{T("Thời tiết từ Open-Meteo","Weather by Open-Meteo")} · {_weather.CityName} · {state} · {info.Temperature:0.#}°C · {T("Cập nhật","Updated")} {info.LastUpdated?.ToString("HH:mm")??T("chưa có","never")}";
     }
     private void OnLightningFlashed()=>_ambience.PlayThunder();
     private void OnDragStart(object s,MouseButtonEventArgs e)
@@ -560,5 +570,5 @@ public partial class MainWindow : Window, IDisposable
     protected override void OnClosing(CancelEventArgs e){if(!_allowExit){e.Cancel=true;Hide();}else base.OnClosing(e);}
     private bool _allowExit;
     private void ExitApp(){_allowExit=true;_settings.Save();System.Windows.Application.Current.Shutdown();}
-    public void Dispose(){if(_disposed)return;_disposed=true;_allowExit=true;IsVisibleChanged-=OnAnimationVisibilityChanged;StateChanged-=OnAnimationWindowStateChanged;_timer.Stop();_feedbackTimer.Stop();_music.TrackChanged-=OnTrackChanged;_music.PlaybackChanged-=OnPlaybackChanged;_music.LibraryChanged-=OnMusicLibraryChanged;_weatherEffects.LightningFlashed-=OnLightningFlashed;_ambience.Dispose();_weatherEffects.Dispose();_weather.WeatherChanged-=OnWeatherChanged;_weather.Dispose();_dayNight.TransitionUpdated-=OnDayNightTransition;_dayNight.Dispose();_time.Updated-=UpdateClock;_time.Dispose();_input.KeyboardActivity-=OnKeyboard;_input.MouseActivity-=OnMouse;_input.Dispose();_blink.Dispose();_tray.Visible=false;_tray.Dispose();_music.Dispose();LoggerService.Info("DeskLofi shutdown.");}
+    public void Dispose(){if(_disposed)return;_disposed=true;_allowExit=true;Microsoft.Win32.SystemEvents.DisplaySettingsChanged-=OnDisplaySettingsChanged;IsVisibleChanged-=OnAnimationVisibilityChanged;StateChanged-=OnAnimationWindowStateChanged;_timer.Stop();_feedbackTimer.Stop();_music.TrackChanged-=OnTrackChanged;_music.PlaybackChanged-=OnPlaybackChanged;_music.LibraryChanged-=OnMusicLibraryChanged;_weatherEffects.LightningFlashed-=OnLightningFlashed;_ambience.Dispose();_weatherEffects.Dispose();_weather.WeatherChanged-=OnWeatherChanged;_weather.Dispose();_dayNight.TransitionUpdated-=OnDayNightTransition;_dayNight.Dispose();_time.Updated-=UpdateClock;_time.Dispose();_input.KeyboardActivity-=OnKeyboard;_input.MouseActivity-=OnMouse;_input.Dispose();_blink.Dispose();_tray.Visible=false;_tray.Dispose();_music.Dispose();LoggerService.Info("DeskLofi shutdown.");}
 }
