@@ -2,7 +2,7 @@
   "id": "default_room",
   "name": "Default Room",
   "layers": {
-    "base": "base.png",
+    "base": "desk_foreground.png",
     "window": "window.png",
     "desk": "desk.png",
     "foreground": "foreground.png"

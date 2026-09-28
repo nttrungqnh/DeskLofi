@@ -6,10 +6,10 @@
     "LightingColors": { "Morning": "#22F5CC92", "Day": "#00000000", "Evening": "#35E79076", "Night": "#7A151D39" },
     "SkyAssets": { "Morning": "Sky/Morning.png", "Day": "Sky/Day.png", "Evening": "Sky/Evening.png", "Night": "Sky/Night.png" },
     "LightingAssets": { "Morning": "Lighting/Morning.png", "Day": "Lighting/Day.png", "Evening": "Lighting/Evening.png", "Night": "Lighting/Night.png" },
-    "WindowBounds": { "X": 53, "Y": 18, "Width": 74, "Height": 51 },
-    "GirlPosition": { "X": 83, "Y": 38 },
-    "CatPosition": { "X": 225, "Y": 82 },
-    "ClockPosition": { "X": 280, "Y": 8 },
+    "WindowBounds": { "X": 113, "Y": 32, "Width": 194, "Height": 78 },
+    "GirlPosition": { "X": 110, "Y": 26 },
+    "CatPosition": { "X": 220, "Y": 64 },
+    "ClockPosition": { "X": 268, "Y": 4 },
     "MusicCategory": "Focus",
     "AmbientEffect": "None"
   }

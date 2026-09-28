@@ -861,6 +861,20 @@ internal static class Program
             var cityText=(System.Windows.Controls.TextBlock)typeof(DeskLofi.Views.MainWindow).GetField("CityText",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
             typeof(DeskLofi.Views.MainWindow).GetMethod("UpdateClock",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(host,null);
             typeof(DeskLofi.Views.MainWindow).GetMethod("ApplySceneDefinition",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(host,null);
+            var roomBase=(System.Windows.Controls.Image)typeof(DeskLofi.Views.MainWindow).GetField("BaseBackgroundLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var roomBackdrop=(System.Windows.Shapes.Rectangle)typeof(DeskLofi.Views.MainWindow).GetField("RoomBase",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var deskPlaceholder=(System.Windows.Controls.Canvas)typeof(DeskLofi.Views.MainWindow).GetField("DeskSceneLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var windowFrame=(System.Windows.Controls.Border)typeof(DeskLofi.Views.MainWindow).GetField("WindowLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var windowDivider=(System.Windows.Shapes.Rectangle)typeof(DeskLofi.Views.MainWindow).GetField("RoomWindowDivider",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            var lightingLayer=(System.Windows.Shapes.Rectangle)typeof(DeskLofi.Views.MainWindow).GetField("LightingLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            Assert(roomBase.Source is System.Windows.Media.Imaging.BitmapSource roomBitmap&&roomBitmap.PixelWidth==1915&&roomBitmap.PixelHeight==821,"uploaded desk foreground is loaded at its native aspect ratio");
+            Assert(roomBackdrop.Visibility==System.Windows.Visibility.Collapsed,"custom room art keeps transparent pixels transparent");
+            Assert(lightingLayer.Visibility==System.Windows.Visibility.Collapsed,"night tint does not paint outside transparent room artwork");
+            Assert(deskPlaceholder.Visibility==System.Windows.Visibility.Collapsed&&windowFrame.Visibility==System.Windows.Visibility.Collapsed&&windowDivider.Visibility==System.Windows.Visibility.Collapsed,"desk foreground replaces the procedural room and window frame");
+            var skyLayer=(System.Windows.Shapes.Rectangle)typeof(DeskLofi.Views.MainWindow).GetField("SkyLayer",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;
+            Assert(skyLayer.Visibility==System.Windows.Visibility.Collapsed,"legacy sky panel stays hidden behind transparent desk artwork");
+            Assert(Math.Abs(System.Windows.Controls.Canvas.GetTop(catSprite)+catSprite.Height*(981d/1024d)-126)<1,"Cat paws align with the uploaded desk surface");
+            Assert(Math.Abs(System.Windows.Controls.Canvas.GetLeft(girlContainer)-DeskLofi.Models.AppSettings.DefaultGirlOffsetX)<0.1,"Girl is centered at the left side of the window above the desk");
             foreach(var layerName in new[]{"BaseBackgroundLayer","RoomWindowLayer","DeskLayer","RoomForegroundLayer"})
             {
                 var image=(System.Windows.Controls.Image)typeof(DeskLofi.Views.MainWindow).GetField(layerName,BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(host)!;

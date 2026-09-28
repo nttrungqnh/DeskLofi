@@ -3,7 +3,7 @@
   <Canvas x:Name="SceneRoot" Width="350" Height="150" ClipToBounds="False">
    <Canvas x:Name="RoomLayer" Width="350" Height="150" Visibility="Visible" IsHitTestVisible="False">
     <Rectangle x:Name="RoomBase" Width="350" Height="150" Fill="#FF312D3A"/>
-    <Image x:Name="BaseBackgroundLayer" Width="350" Height="150" Stretch="Fill" IsHitTestVisible="False"/>
+    <Image x:Name="BaseBackgroundLayer" Width="350" Height="150" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
     <Rectangle x:Name="SkyLayer" Canvas.Left="53" Canvas.Top="18" Width="74" Height="51" Fill="#FF87C5D9"/>
     <Image x:Name="SkyImageFrom" Canvas.Left="53" Canvas.Top="18" Width="74" Height="51" Stretch="Fill" Opacity="0" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
     <Image x:Name="SkyImageTo" Canvas.Left="53" Canvas.Top="18" Width="74" Height="51" Stretch="Fill" Opacity="0" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
@@ -13,22 +13,21 @@
     <Image x:Name="LightingImageTo" Width="350" Height="150" Stretch="Fill" Opacity="0" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
     <Canvas x:Name="WeatherLayer" Canvas.Left="53" Canvas.Top="18" Width="74" Height="51" ClipToBounds="True" IsHitTestVisible="False"/>
     <Rectangle x:Name="LightningLayer" Canvas.Left="53" Canvas.Top="18" Width="74" Height="51" Fill="White" Opacity="0" IsHitTestVisible="False"/>
+    <Rectangle x:Name="RoomWindowDivider" Canvas.Left="194" Canvas.Top="32" Width="8" Height="78" Fill="#FF583A2D" IsHitTestVisible="False" Visibility="Collapsed"/>
     <Border x:Name="WindowLayer" Canvas.Left="49" Canvas.Top="14" Width="82" Height="59" BorderBrush="#FF604B4C" BorderThickness="4" Background="Transparent" IsHitTestVisible="False"/>
     <Rectangle x:Name="LampGlow" Canvas.Left="0" Canvas.Top="44" Width="56" Height="68" Opacity="0" IsHitTestVisible="False" RadiusX="28" RadiusY="34">
       <Rectangle.Fill><RadialGradientBrush><GradientStop Color="#66FFD77A" Offset="0"/><GradientStop Color="#00FFD77A" Offset="1"/></RadialGradientBrush></Rectangle.Fill>
     </Rectangle>
     <TextBlock x:Name="WeatherText" Canvas.Left="246" Canvas.Top="7" Text="--" FontFamily="Consolas" FontSize="9" Foreground="#FFE8F2E8" ToolTip="Weather unavailable" Visibility="Collapsed"/>
    </Canvas>
+   <Image x:Name="DeskLayer" Width="350" Height="150" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
    <Canvas x:Name="DeskSceneLayer" Width="350" Height="150" Visibility="Visible">
-    <Image x:Name="DeskLayer" Width="350" Height="150" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
     <Rectangle Canvas.Left="0" Canvas.Top="118" Width="350" Height="7" Fill="#FF94674C"/>
     <Rectangle Canvas.Left="0" Canvas.Top="125" Width="350" Height="7" Fill="#FF64483E"/>
     <Rectangle Canvas.Left="12" Canvas.Top="132" Width="8" Height="15" Fill="#FF48383A"/><Rectangle Canvas.Left="329" Canvas.Top="132" Width="8" Height="15" Fill="#FF48383A"/>
     <Rectangle Canvas.Left="48" Canvas.Top="107" Width="20" Height="11" Fill="#FFB98653" RadiusX="2" RadiusY="2"/>
     <Rectangle Canvas.Left="52" Canvas.Top="110" Width="12" Height="7" Fill="#FF604237"/>
     <Rectangle Canvas.Left="23" Canvas.Top="57" Width="8" Height="51" Fill="#FF302C39"/><Rectangle Canvas.Left="16" Canvas.Top="52" Width="22" Height="5" Fill="#FFE1C77A"/><Rectangle Canvas.Left="20" Canvas.Top="57" Width="14" Height="4" Fill="#FFE1C77A" Opacity=".5"/>
-    <Border x:Name="Radio" Canvas.Left="285" Canvas.Top="94" Width="19" Height="24" Background="#FFAF8064" CornerRadius="3" MouseLeftButtonUp="OnRadioClick" ToolTip="Music"><TextBlock Text="♫" Foreground="#FF372C3B" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-    <Border x:Name="DropFeedback" Canvas.Left="88" Canvas.Top="8" Background="#E8222031" Padding="6,3" CornerRadius="3" Visibility="Collapsed" IsHitTestVisible="False"><TextBlock x:Name="DropFeedbackText" Foreground="White" FontSize="10"/></Border>
    </Canvas>
     <Canvas x:Name="GirlLayer" Canvas.Left="0" Canvas.Top="0" Width="112" Height="106" UseLayoutRounding="True" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="NearestNeighbor">
       <Image x:Name="GirlSprite" Width="112" Height="106" Stretch="Uniform" UseLayoutRounding="True" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="NearestNeighbor" MouseLeftButtonUp="OnGirlClick"/>
@@ -39,10 +38,12 @@
    <Canvas x:Name="ForegroundLayer" Width="350" Height="150" IsHitTestVisible="False">
     <Image x:Name="RoomForegroundLayer" Width="350" Height="150" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" IsHitTestVisible="False"/>
    </Canvas>
-   <Canvas x:Name="OverlayLayer" Width="350" Height="150" IsHitTestVisible="False">
-    <Border x:Name="ClockObject" Canvas.Left="280" Canvas.Top="8" Background="#EE172333" BorderBrush="#FF70868B" BorderThickness="1" Padding="3,1" CornerRadius="2">
+   <Canvas x:Name="OverlayLayer" Width="350" Height="150" IsHitTestVisible="True">
+    <Border x:Name="ClockObject" Canvas.Left="280" Canvas.Top="8" Background="#EE172333" BorderBrush="#FF70868B" BorderThickness="1" Padding="3,1" CornerRadius="2" IsHitTestVisible="False">
       <StackPanel x:Name="ClockPanel"><TextBlock x:Name="ClockText" Text="08:30" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="#FFB8E6C6"/><TextBlock x:Name="CityText" Text="Hạ Long" FontFamily="Consolas" FontSize="7" Foreground="#FF89B4A5" HorizontalAlignment="Right"/><TextBlock x:Name="DateText" Text="24/09" FontFamily="Consolas" FontSize="7" Foreground="#FF89B4A5" HorizontalAlignment="Right" Visibility="Collapsed"/></StackPanel>
     </Border>
+    <Border x:Name="Radio" Canvas.Left="28" Canvas.Top="125" Width="18" Height="20" Background="#FFAF8064" CornerRadius="3" MouseLeftButtonUp="OnRadioClick" ToolTip="Music"><TextBlock Text="♫" Foreground="#FF372C3B" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <Border x:Name="DropFeedback" Canvas.Left="88" Canvas.Top="8" Background="#E8222031" Padding="6,3" CornerRadius="3" Visibility="Collapsed" IsHitTestVisible="False"><TextBlock x:Name="DropFeedbackText" Foreground="White" FontSize="10"/></Border>
    </Canvas>
   </Canvas>
   <Popup x:Name="MusicPopup" Placement="Top" VerticalOffset="-8" HorizontalOffset="-108" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">

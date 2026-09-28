@@ -22,8 +22,8 @@ public sealed class AppSettings
     public string ActiveCharacterPackId { get; set; } = "girl_default";
     public string ActivePetPackId { get; set; } = "orange_cat";
     public int CatSleepTimeoutSeconds { get; set; } = DefaultCatSleepTimeoutSeconds;
-    public const double DefaultCatOffsetX = 225;
-    public const double DefaultCatOffsetY = 82;
+    public const double DefaultCatOffsetX = 220;
+    public const double DefaultCatOffsetY = 64;
     public double CatOffsetX { get; set; } = DefaultCatOffsetX;
     public double CatOffsetY { get; set; } = DefaultCatOffsetY;
     public const double DefaultCatScale = 0.063;
@@ -33,8 +33,10 @@ public sealed class AppSettings
     public double Volume { get; set; } = 0.35;
     public string Scene { get; set; } = "Bedroom";
     public string ActiveRoomPackId { get; set; } = "default_room";
-    public double GirlOffsetX { get; set; } = 83;
-    public double GirlOffsetY { get; set; } = 38;
+    public const double DefaultGirlOffsetX = 110;
+    public const double DefaultGirlOffsetY = 26;
+    public double GirlOffsetX { get; set; } = DefaultGirlOffsetX;
+    public double GirlOffsetY { get; set; } = DefaultGirlOffsetY;
     public double Left { get; set; } = -1;
     public double TaskbarOffsetX { get; set; } = 93;
     public double Top { get; set; } = -1;

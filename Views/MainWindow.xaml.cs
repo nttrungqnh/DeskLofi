@@ -396,15 +396,58 @@ public partial class MainWindow : Window, IDisposable
 #endif
     private void OnDayNightTransition(TimePeriod from,TimePeriod to,double amount)=>UpdateDayNight(from,to,amount);
     private void UpdateDayNight(TimePeriod from,TimePeriod to,double amount){SkyLayer.Fill=BlendLayerColor(_sceneDefinition.SkyColors,from,to,amount,"#FF25365D");LightingLayer.Fill=BlendLayerColor(_sceneDefinition.LightingColors,from,to,amount,"#00000000");LampGlow.Opacity=LampAmount(from)+(LampAmount(to)-LampAmount(from))*amount;if(_assetFrom!=from||_assetTo!=to){_assetFrom=from;_assetTo=to;SkyImageFrom.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.SkyAssets.GetValueOrDefault(from.ToString()));SkyImageTo.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.SkyAssets.GetValueOrDefault(to.ToString()));LightingImageFrom.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.LightingAssets.GetValueOrDefault(from.ToString()));LightingImageTo.Source=SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.LightingAssets.GetValueOrDefault(to.ToString()));}SkyImageFrom.Opacity=SkyImageFrom.Source is null?0:1-amount;SkyImageTo.Opacity=SkyImageTo.Source is null?0:amount;LightingImageFrom.Opacity=LightingImageFrom.Source is null?0:1-amount;LightingImageTo.Opacity=LightingImageTo.Source is null?0:amount;}
-    private void ApplySceneDefinition(){var w=_sceneDefinition.WindowBounds;Canvas.SetLeft(SkyLayer,w.X);Canvas.SetTop(SkyLayer,w.Y);SkyLayer.Width=w.Width;SkyLayer.Height=w.Height;foreach(var image in new[]{SkyImageFrom,SkyImageTo}){Canvas.SetLeft(image,w.X);Canvas.SetTop(image,w.Y);image.Width=w.Width;image.Height=w.Height;}Canvas.SetLeft(RoomWindowLayer,w.X-4);Canvas.SetTop(RoomWindowLayer,w.Y-4);RoomWindowLayer.Width=w.Width+8;RoomWindowLayer.Height=w.Height+8;Canvas.SetLeft(WeatherLayer,w.X);Canvas.SetTop(WeatherLayer,w.Y);WeatherLayer.Width=w.Width;WeatherLayer.Height=w.Height;Canvas.SetLeft(LightningLayer,w.X);Canvas.SetTop(LightningLayer,w.Y);LightningLayer.Width=w.Width;LightningLayer.Height=w.Height;Canvas.SetLeft(WindowLayer,w.X-4);Canvas.SetTop(WindowLayer,w.Y-4);WindowLayer.Width=w.Width+8;WindowLayer.Height=w.Height+8;Canvas.SetLeft(ClockObject,_sceneDefinition.ClockPosition.X);Canvas.SetTop(ClockObject,_sceneDefinition.ClockPosition.Y);_weatherEffects.SetViewport(w.Width,w.Height);BaseBackgroundLayer.Source=_packs.GetRoomLayer("base") ?? SceneDefinitionService.LoadImage(_sceneDefinition,_sceneDefinition.BaseBackground);RoomWindowLayer.Source=_packs.GetRoomLayer("window");DeskLayer.Source=_packs.GetRoomLayer("desk");RoomForegroundLayer.Source=_packs.GetRoomLayer("foreground");}
+    private void ApplySceneDefinition()
+    {
+        var bounds = _sceneDefinition.WindowBounds;
+        Canvas.SetLeft(SkyLayer, bounds.X); Canvas.SetTop(SkyLayer, bounds.Y);
+        SkyLayer.Width = bounds.Width; SkyLayer.Height = bounds.Height;
+        foreach (var image in new[] { SkyImageFrom, SkyImageTo })
+        {
+            Canvas.SetLeft(image, bounds.X); Canvas.SetTop(image, bounds.Y);
+            image.Width = bounds.Width; image.Height = bounds.Height;
+        }
+        Canvas.SetLeft(RoomWindowLayer, bounds.X - 4); Canvas.SetTop(RoomWindowLayer, bounds.Y - 4);
+        RoomWindowLayer.Width = bounds.Width + 8; RoomWindowLayer.Height = bounds.Height + 8;
+        Canvas.SetLeft(WeatherLayer, bounds.X); Canvas.SetTop(WeatherLayer, bounds.Y);
+        WeatherLayer.Width = bounds.Width; WeatherLayer.Height = bounds.Height;
+        Canvas.SetLeft(LightningLayer, bounds.X); Canvas.SetTop(LightningLayer, bounds.Y);
+        LightningLayer.Width = bounds.Width; LightningLayer.Height = bounds.Height;
+        Canvas.SetLeft(WindowLayer, bounds.X - 4); Canvas.SetTop(WindowLayer, bounds.Y - 4);
+        WindowLayer.Width = bounds.Width + 8; WindowLayer.Height = bounds.Height + 8;
+        Canvas.SetLeft(RoomWindowDivider, bounds.X + bounds.Width * 0.42);
+        Canvas.SetTop(RoomWindowDivider, bounds.Y);
+        RoomWindowDivider.Width = bounds.Width * 0.04; RoomWindowDivider.Height = bounds.Height;
+        Canvas.SetLeft(ClockObject, _sceneDefinition.ClockPosition.X);
+        Canvas.SetTop(ClockObject, _sceneDefinition.ClockPosition.Y);
+        _weatherEffects.SetViewport(bounds.Width, bounds.Height);
+
+        var roomBase = _packs.GetRoomLayer("base");
+        BaseBackgroundLayer.Source = roomBase ?? SceneDefinitionService.LoadImage(_sceneDefinition, _sceneDefinition.BaseBackground);
+        var usesRoomArtwork = roomBase is not null;
+        RoomBase.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        DeskSceneLayer.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        WindowLayer.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        RoomWindowDivider.Visibility = Visibility.Collapsed;
+        SkyLayer.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        SkyImageFrom.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        SkyImageTo.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        WeatherLayer.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        LightningLayer.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        LightingLayer.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        LightingImageFrom.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        LightingImageTo.Visibility = usesRoomArtwork ? Visibility.Collapsed : Visibility.Visible;
+        RoomWindowLayer.Source = _packs.GetRoomLayer("window");
+        DeskLayer.Source = _packs.GetRoomLayer("desk");
+        RoomForegroundLayer.Source = _packs.GetRoomLayer("foreground");
+    }
     private void ApplyCharacterLayout(double scale)
     {
         scale = Math.Clamp(scale, 0.75, 2.0);
         var catScale = double.IsFinite(_settings.Current.CatScale) ? Math.Clamp(_settings.Current.CatScale, 0.02, 0.2) : AppSettings.DefaultCatScale;
         var catX = double.IsFinite(_settings.Current.CatOffsetX) ? _settings.Current.CatOffsetX : AppSettings.DefaultCatOffsetX;
         var catY = double.IsFinite(_settings.Current.CatOffsetY) ? _settings.Current.CatOffsetY : AppSettings.DefaultCatOffsetY;
-        var girlX = double.IsFinite(_settings.Current.GirlOffsetX) ? _settings.Current.GirlOffsetX : 83;
-        var girlY = double.IsFinite(_settings.Current.GirlOffsetY) ? _settings.Current.GirlOffsetY : 38;
+        var girlX = double.IsFinite(_settings.Current.GirlOffsetX) ? _settings.Current.GirlOffsetX : AppSettings.DefaultGirlOffsetX;
+        var girlY = double.IsFinite(_settings.Current.GirlOffsetY) ? _settings.Current.GirlOffsetY : AppSettings.DefaultGirlOffsetY;
         Canvas.SetLeft(GirlLayer, girlX);
         Canvas.SetTop(GirlLayer, girlY);
         CatSprite.Width = _catImages.Master.PixelWidth * catScale;
